@@ -61,6 +61,9 @@ class ReviewDetectionsScreen(QMainWindow):
         """
         start = time.time()
 
+        if self.parent_app_screen:
+            self.parent_app_screen.refresh_step_status()
+
         # 1) Update self.csv_data from table rows
         row_count = self.table.rowCount()
         col_count = self.table.columnCount()
@@ -101,9 +104,13 @@ class ReviewDetectionsScreen(QMainWindow):
         elapsed = time.time() - start
         print(f'save_review took: {elapsed}.  persist: {persist}')
 
-    def __init__(self, project_manager):
+    def __init__(self, project_manager, parent_app_screen):
         super().__init__()
+        self.setWindowTitle(f"Review Detections: {project_manager.current_project['name']}")
+
         self.project_manager = project_manager
+        self.parent_app_screen = parent_app_screen
+
         detections_path = self.project_manager.current_project['detections_file']
         review_path = self.project_manager.current_project['review_file'] 
         
@@ -288,30 +295,6 @@ class ReviewDetectionsScreen(QMainWindow):
         # keyboard nav
         self.table.itemSelectionChanged.connect(self.on_table_selection_changed)
 
-
-    def select_detection(self, index):
-        self.current_index = index
-
-        # Same logic to load the row’s data
-        col_indexes = {}
-        for col in range(self.table.columnCount()):
-            header_text = self.table.horizontalHeaderItem(col).text()
-            col_indexes[header_text] = col
-
-        start_col = col_indexes["start_time"]
-        end_col   = col_indexes["end_time"]
-        detection_start = float(self.table.item(index, start_col).text())
-        detection_end   = float(self.table.item(index, end_col).text())
-
-        # Put those in the spinboxes
-        self.start_spin.setValue(detection_start)
-        self.stop_spin.setValue(detection_end)
-
-        # (Re)load and display spectrogram for that detection
-        spectrogram, dstart, dend, audio_dur, astart, aend, fname = self.load_audio()
-        self.display_spectrogram(spectrogram, dstart, dend, audio_dur, astart, aend, fname)
-
-
     def play_selected_segment(self):
         # 1) Figure out the row. You can rely on self.current_index.
         row_idx = self.current_index
@@ -344,7 +327,6 @@ class ReviewDetectionsScreen(QMainWindow):
 
         # 7) Start playback
         self.player.play()
-
 
     def apply_keep(self):
         self.apply_label_to_current_detection(erase_flag=0)
@@ -387,7 +369,6 @@ class ReviewDetectionsScreen(QMainWindow):
 
         # Auto-advance to the next detection for faster review
         self.scroll("next")
-
 
     def on_table_item_changed(self, item):
         """
@@ -513,7 +494,6 @@ class ReviewDetectionsScreen(QMainWindow):
     
         # this spectrogram covers the width of the window - the detection is only a sliceof that
         return spectrogram, detection_start - audio_start, detection_end - audio_start, total_duration, audio_start, (audio_start + total_duration), file_name
-
 
     def display_spectrogram(self, spectrogram, detection_start, detection_end, audio_duration, audio_start, audio_end, file_name):
         """
@@ -657,11 +637,9 @@ class ReviewDetectionsScreen(QMainWindow):
                 if table_item:
                     table_item.setBackground(color)
 
-    
     def select_detection_from_table(self, row):
         clicked_row_idx = row.row()
         self.select_detection(clicked_row_idx)
-
 
     def highlight_all_rows(self):
         """
@@ -706,7 +684,6 @@ class ReviewDetectionsScreen(QMainWindow):
         
         self.highlight_all_rows()
 
-
     def zoom(self, zoom_out):
         if zoom_out:
             if self.zoom_level == 0.5: # remove the half step if present
@@ -722,7 +699,6 @@ class ReviewDetectionsScreen(QMainWindow):
 
         spectrogram, detection_start, detection_end, audio_duration, audio_start, audio_end, file_name = self.load_audio()
         self.display_spectrogram(spectrogram, detection_start, detection_end, audio_duration, audio_start, audio_end, file_name)  
-
 
     def select_detection(self, index):
         self.current_index = index
@@ -747,7 +723,6 @@ class ReviewDetectionsScreen(QMainWindow):
         spectrogram, detection_start, detection_end, audio_duration, audio_start, audio_end, fname = self.load_audio()
         self.display_spectrogram(spectrogram, detection_start, detection_end, audio_duration, audio_start, audio_end, fname) 
         
-
     def highlight_row(self, i):
         for j in range(self.table.columnCount()):
             item = self.table.item(i, j)
@@ -756,14 +731,3 @@ class ReviewDetectionsScreen(QMainWindow):
             else:
                 item.setBackground(QColor('white'))     # not reviewed
 
-
-# NOTE: temporary - used for testing
-if __name__ == "__main__":
-    app = QApplication.instance()
-    if app is None:
-        app = QApplication(sys.argv)
-        # app.setStyle("Fusion")  # For testing
-        
-    main_window = ReviewDetectionsScreen(None)
-    main_window.show()
-    sys.exit(app.exec())

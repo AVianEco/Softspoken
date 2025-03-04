@@ -81,7 +81,6 @@ class NNDetector():
         
         return p
 
-
     def process_batch(self, audio_data, batch_indexes):
         """
         Given a padded audio array and a list of start indexes,
@@ -100,7 +99,6 @@ class NNDetector():
             speech_pred, mask_pred = self.model(audio_slices)
 
         return speech_pred.cpu().numpy(), mask_pred.cpu().numpy()
-
 
     def find_speech_regions(self, averaged_detections, break_duration=0.5):
         """
@@ -144,7 +142,6 @@ class NNDetector():
 
         return speech_regions
 
-
     def extract_filename(self, file_path):
         """
         Returns the filename (without extension) from a file path.
@@ -152,7 +149,6 @@ class NNDetector():
         full_filename = os.path.basename(file_path)
         filename_without_extension = full_filename.rsplit('.', 1)[0]
         return filename_without_extension
-
 
     def average_overlapping_detections(self, detections, audio_length_seconds, padding=0, min_count=1):
         """

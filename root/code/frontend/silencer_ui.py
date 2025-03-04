@@ -52,7 +52,6 @@ class FilePickerWindow(QMainWindow):
             files_list = file_dialog.selectedFiles()
             print("Selected files:", files_list)
 
-
 class HomeScreen(QMainWindow):
     last_project_clicked = Signal()
     open_project_clicked = Signal()
@@ -134,11 +133,11 @@ class HomeScreen(QMainWindow):
         print("Start project clicked")
         self.start_project_clicked.emit()
 
-
 class VoiceDetectorScreen(QMainWindow):
-    def __init__(self, project_manager):
+    def __init__(self, project_manager, parent_app_screen ):
         super().__init__()
         self.project_manager = project_manager
+        self.parent_app_screen = parent_app_screen 
 
         # UI Elements
         self.setWindowTitle("Voice Detector")
@@ -261,6 +260,9 @@ class VoiceDetectorScreen(QMainWindow):
 
     # Slots to handle signals:
     def on_file_started(self, filepath):
+        if self.parent_app_screen:
+            self.parent_app_screen.refresh_step_status()
+    
         filename = os.path.basename(filepath)
         self.file_in_progress_label.setText(f"Currently processing: {filename}")
         self.file_progress_bar.setValue(0)
@@ -318,6 +320,9 @@ class VoiceDetectorScreen(QMainWindow):
         """
         Worker is completely finished OR stopped early.
         """
+        if self.parent_app_screen:
+            self.parent_app_screen.refresh_step_status()
+
         self.processing = False
         self.file_in_progress_label.setText("Done.")
         self.file_progress_bar.setValue(100)
@@ -326,7 +331,6 @@ class VoiceDetectorScreen(QMainWindow):
             QMessageBox.information(self, "Stopped", "Processing was stopped by user.")
         else:
             QMessageBox.information(self, "Complete", "All files processed successfully.")
-
 
 class AppScreen(QMainWindow):
     def __init__(self, project_manager):
@@ -348,7 +352,7 @@ class AppScreen(QMainWindow):
         # Call the base class implementation of showEvent
         super().showEvent(event)
 
-    # NEW HELPER: figure out the textual status and color for each step
+    # figure out the textual status and color for each step
     def compute_step_status(self, csv_path):
         """
         Returns (status_text, colorStyle) based on the file’s existence & size.
@@ -370,7 +374,7 @@ class AppScreen(QMainWindow):
         else:
             return ("Complete", "color: green;")
 
-    # NEW HELPER: updates the three step labels based on the presence/size of CSV files
+    # updates the three step labels based on the presence/size of CSV files
     def refresh_step_status(self):
         # 1) Voice Detector step is tied to detections_file
         detections_path = self.project_manager.current_project['detections_file']
@@ -472,24 +476,33 @@ class AppScreen(QMainWindow):
                 f.write(line + '\n')
 
     def launch_voice_detector_ui(self):
-        self.voice_detector_screen = VoiceDetectorScreen(self.project_manager)
+        self.voice_detector_screen = VoiceDetectorScreen(
+            self.project_manager,
+            parent_app_screen = self
+        )
+
         add_common_menus(self.voice_detector_screen)
         self.voice_detector_screen.show()
 
     def launch_review_detections_ui(self):
-        # launch the window
-        self.review_detections_screen = ReviewDetectionsScreen(self.project_manager)
+        self.review_detections_screen = ReviewDetectionsScreen(
+            self.project_manager,
+            parent_app_screen = self
+        )
+        
         add_common_menus(self.review_detections_screen)
         self.review_detections_screen.show()
 
     def launch_silence_voices_ui(self):
-        self.silence_voices_screen = SilenceVoicesScreen(self.project_manager)
+        self.silence_voices_screen = SilenceVoicesScreen(
+            self.project_manager,
+            parent_app_screen = self
+        )
+
         add_common_menus(self.silence_voices_screen)
         self.silence_voices_screen.show()
 
     def init_ui(self):
-
-
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
 
@@ -554,7 +567,6 @@ class AppScreen(QMainWindow):
             main_layout.addLayout(button_label_layout)
 
         central_widget.setLayout(main_layout)
-
 
 # tracks the audio files that are added to the project 
 class ProjectManager:
@@ -671,7 +683,6 @@ class ProjectManager:
         project = sorted(self.projects_data, key=lambda x: x['last_accessed'], reverse=True)[0]
         self.set_active_project(project['name'])
         return True
-
 
 class DetectionProject:
     def __init__(self, project_settings):
@@ -1068,6 +1079,7 @@ def add_common_menus(main_window):
     help_menu.addAction(user_guide_action)
 
     return menu_bar
+
 
 def main():
     # the project manager hold a list of all projects kept by the user - plus the settings for the currently active project
