@@ -33,6 +33,24 @@ for /f "tokens=1,2,3 delims=." %%i in ("%FULL_VERSION%") do (
 echo Detected Python version: %FULL_VERSION%
 echo Major = %MAJOR%, Minor = %MINOR%, Patch = %PATCH%
 
+REM ----------------------------------
+REM 3) Ensure Python >= 3.12
+REM ----------------------------------
+REM You can tailor this logic to be even stricter if you'd like
+REM to handle unexpected versions, e.g. major <3 automatically fails, etc.
+
+if %MAJOR% LSS 3 (
+    echo [ERROR] Python 3.12 or higher is required. Exiting...
+    pause
+    goto end
+) else (
+    if %MAJOR%==3 if %MINOR% LSS 12 (
+        echo [ERROR] Python 3.12 or higher is required. Exiting...
+        pause
+        goto end
+    )
+)
+
 REM ----------------------
 REM Step 2: Check or create the venv
 REM ----------------------
@@ -53,7 +71,9 @@ if exist %VENV_DIR% (
             goto end
         )
     ) else (
-        echo Skipping virtual environment creation...
+        echo [ERROR] Virtual environment creation is required. Exiting...
+        pause
+        goto end
     )
 )
 
@@ -64,6 +84,10 @@ REM ----------------------
 if exist %VENV_DIR% (
     echo Activating virtual environment...
     call "%VENV_DIR%\Scripts\activate.bat"
+) else (
+    echo [ERROR] Virtual environment directory is required. Exiting...
+    pause
+    goto end
 )
 
 REM ----------------------
@@ -88,7 +112,6 @@ REM Step 5: Run your app
 REM ----------------------
 
 echo Launching the application.
-REM Example: If your app has an entry point "python -m your_package"
 python launch.py
 
 :end

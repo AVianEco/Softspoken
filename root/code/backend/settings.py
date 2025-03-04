@@ -1,3 +1,5 @@
+import os
+
 # STFT settings
 n_fft = 512
 win_length = n_fft
@@ -23,5 +25,9 @@ project_dir = '.\\projects'
 # detection duration must be longer than this to be seen for review
 minimum_detection_len = 0.1 
 
+# url for the online help
 user_guide_url = 'https://github.com/AVianEco/Softspoken'
+
+# use half the CPU
+cpu_threads = os.cpu_count() // 2
 

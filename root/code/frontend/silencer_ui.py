@@ -7,13 +7,12 @@ import sys
 import os
 import json
 import time
-import pickle
+import logging
 import pandas as pd
 import numpy as np
 import librosa 
 import soundfile as sf
 from datetime import datetime
-from typing import Dict, List, Tuple
 
 from root.code.frontend.NNDetector import NNDetector
 from root.code.frontend.review_detections import ReviewDetectionsScreen
@@ -52,6 +51,7 @@ class FilePickerWindow(QMainWindow):
         if file_dialog.exec():
             files_list = file_dialog.selectedFiles()
             print("Selected files:", files_list)
+
 
 class HomeScreen(QMainWindow):
     last_project_clicked = Signal()
@@ -106,11 +106,13 @@ class HomeScreen(QMainWindow):
         # Add New Project action to File menu
         new_project_action = QAction('New Project', self)
         new_project_action.setShortcut('Ctrl+N')
+        new_project_action.triggered.connect(self.start_project_button_clicked)
         file_menu.addAction(new_project_action)
 
         # Add Open Project action to File menu
         open_project_action = QAction('Open Project', self)
         open_project_action.setShortcut('Ctrl+O')
+        open_project_action.triggered.connect(self.open_project_button_clicked)
         file_menu.addAction(open_project_action)
 
         # Add Close App action to File menu
@@ -131,6 +133,7 @@ class HomeScreen(QMainWindow):
     def start_project_button_clicked(self):
         print("Start project clicked")
         self.start_project_clicked.emit()
+
 
 class VoiceDetectorScreen(QMainWindow):
     def __init__(self, project_manager):
@@ -324,110 +327,6 @@ class VoiceDetectorScreen(QMainWindow):
         else:
             QMessageBox.information(self, "Complete", "All files processed successfully.")
 
-    
-    def find_speech_regions(self, averaged_detections: Dict[str, List[Tuple[float, str]]], break_duration: float = 0.5) -> Dict[str, List[Tuple[str, str]]]:
-        """
-        This function finds continuous regions of speech in the averaged detections. It takes a dictionary
-        of averaged detections where each key is the file name and the value is a list of tuples of averaged detections
-        and their corresponding times. It also takes an optional break_duration parameter that specifies the maximum
-        duration of silence allowed between utterances for them to still be considered the same audio segment.
-        """
-        # for classification
-        threshold = settings.threshold
-        
-        # Initialize a dictionary to hold the speech regions for each file
-        speech_regions = {}
-
-        # Loop through each file and its averaged detections
-        for file, file_detections in averaged_detections.items():
-            # Initialize a list to hold the continuous regions of speech
-            regions = []
-
-            # Initialize variables to track the start and end of the current region
-            start_time = None
-            end_time = None
-
-            # Loop through the averaged detections
-            for detection, time in file_detections[file]:
-                if detection > threshold:  
-                    if start_time is None:  # If this is the start of a new region
-                        start_time = time
-                    end_time = time  # Update the end time of the current region
-                elif start_time is not None:  # If the detection is not positive and we're tracking a region
-                    regions.append((start_time, end_time))  # Add the region to the list
-                    start_time = None  # Reset the start time
-
-            # If we're tracking a region at the end of the detections, add it to the list
-            if start_time is not None:
-                regions.append((start_time, end_time))
-
-            if len(regions) > 0:
-                # Merge regions that are within the allowable break duration from each other
-                merged_regions = []
-                current_region = regions[0]
-                for next_region in regions[1:]:
-                    # If the next region is within the allowable break duration from the current region
-                    if float(next_region[0]) - float(current_region[1]) <= break_duration:
-                        # Extend the current region to include the next region
-                        current_region = (current_region[0], next_region[1])
-                    else:  # If the next region is not within the allowable break duration
-                        # Add the current region to the list of merged regions
-                        merged_regions.append(current_region)
-                        # Start tracking a new current region
-                        current_region = next_region
-    
-                # Add the last current region to the list of merged regions
-                merged_regions.append(current_region)
-    
-                # Add the merged regions to the dictionary
-                speech_regions[file] = merged_regions
-            else:
-                speech_regions[file] = []
-
-        return speech_regions
-    
-    
-    def average_overlapping_detections(self, detections: Dict[str, np.ndarray], audio_length_seconds: int, padding: int = 0, min_count: int = 1) -> Dict[str, List[Tuple[float, str]]]:
-        """
-        This function averages the overlapping detections. It takes a dictionary
-        of detections where each key is the file name and the value is a numpy array
-        of shape (N, 256) representing the detections for each audio file.
-        """
-        
-        # Initialize a dictionary to hold the averaged detections for each file
-        averaged_detections = {}
-
-        # Loop through each file and its detections
-        for file, file_detections in detections.items():
-            detections_file_name = self.extract_filename(file)
-            
-            with open(os.path.join("./", f"detections_{detections_file_name}.pkl"), 'wb') as f:
-                pickle.dump(file_detections, f)
-            
-            # Calculate the output length
-            output_length = int(round(audio_length_seconds * 256/3))
-
-            # Initialize arrays to hold the sum and count of detections for each time point
-            sum_detections = np.zeros(output_length + 2 * padding)
-            count_detections = np.zeros(output_length + 2 * padding)
-
-            # Calculate the time resolution of the snipped spectrogram
-            time_resolution = 3 / 256  # 256 time bins for a 3-second window
-
-            # Loop through each window and its detections
-            for i, window_detections in enumerate(file_detections):
-                # Calculate the start position of the window in the output array
-                start_position = padding + int(round(i * settings.step_size / time_resolution))  # Adjusted step size
-
-                # Add the detections to the sum and increment the count
-                sum_detections[start_position:start_position+256] += window_detections.reshape(-1)
-                count_detections[start_position:start_position+256] += 1
-
-            averaged_detections[file] = [(sum / count, f"{index / (256/3):.4f}")
-                                         for index, (sum, count) in enumerate(zip(sum_detections, count_detections))
-                                         if count >= min_count]
-
-        return averaged_detections
 
 class AppScreen(QMainWindow):
     def __init__(self, project_manager):
@@ -681,8 +580,7 @@ class ProjectManager:
         else:
             # If the file doesn't exist, create it with an empty JSON object
             self.write_projects_file()
-    
-    
+
     def get_unprocessed_list(self):
         if self.current_project is None:
             return []
@@ -702,7 +600,6 @@ class ProjectManager:
         
         # Return the list of lines
         return lines_list
-    
     
     def update_file_list(self, files_list):
         # Define the path to the 'files.txt' file
@@ -731,7 +628,6 @@ class ProjectManager:
         # Return the updated list of file names
         return sorted_files
     
-    
     def get_new_project_settings(self):
         return {
             'name': '', # unique name of the project
@@ -744,7 +640,6 @@ class ProjectManager:
     def get_current_datetime_str(self):
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
-    # Additional methods for managing projects will go here
     def list_projects_by_name(self):
         return [p['name'] for p in self.projects_data]
         
@@ -768,6 +663,14 @@ class ProjectManager:
         # Use a generator expression to find the project with the given name, otherwise return None
         project = next((p for p in self.projects_data if p['name'] == project_name), None)
         self.current_project = project
+
+    def activate_latest(self):
+        if len(self.projects_data) == 0:
+            return False
+
+        project = sorted(self.projects_data, key=lambda x: x['last_accessed'], reverse=True)[0]
+        self.set_active_project(project['name'])
+        return True
 
 
 class DetectionProject:
@@ -794,7 +697,6 @@ class DetectionProject:
     
     def save_detections(self):
         self.df.to_csv(self.settings.current_project['detections_file'], index = False)
-        
 
 class NewProjectDialog(QDialog):
     def __init__(self, parent=None):
@@ -837,7 +739,6 @@ class NewProjectDialog(QDialog):
 
     def reject(self):
         super(NewProjectDialog, self).reject()
-
 
 class ProjectSelectionDialog(QDialog):
     def __init__(self, items, parent=None):
@@ -885,11 +786,6 @@ class ProjectSelectionDialog(QDialog):
     
     def reject(self):
         super(ProjectSelectionDialog, self).reject()
-
-
-
-
-
 
 class SilenceWorkerSignals(QObject):
     """
@@ -1174,7 +1070,7 @@ def add_common_menus(main_window):
     return menu_bar
 
 def main():
-# the project manager hold a list of all projects kept by the user - plus the settings for the currently active project
+    # the project manager hold a list of all projects kept by the user - plus the settings for the currently active project
     project_manager = ProjectManager()
     
     app = QApplication.instance()
@@ -1220,11 +1116,13 @@ def main():
     app_screen = AppScreen(project_manager)
     add_common_menus(app_screen)
     
-    
     def open_app_screen():
         home_screen.close()
-        app_screen.show()
-    
+
+        # pick the last accessed project
+        activated = app_screen.project_manager.activate_latest()
+        if activated:
+            app_screen.show()
     
     def start_new_project_screen():
         result = new_project_dialog.exec()
@@ -1259,7 +1157,7 @@ def main():
         if result == QDialog.Accepted:
             # get the selected item text
             selected_item = project_dialog.selected_item
-            print(f"Selected item: {selected_item}")
+            logging.info(f"Selected item: {selected_item}")
             
             # do something with the selected_item
             project_manager.set_active_project(selected_item)
@@ -1272,7 +1170,6 @@ def main():
 
     home_screen.show()
     sys.exit(app.exec())
-
 
 if __name__ == '__main__':
     main()

@@ -1,8 +1,11 @@
-from root.code.frontend import silencer_ui
+import logging
+logging.basicConfig(level=logging.INFO)
 
 import os
-print("Working directory: ", os.getcwd())
+from root.code.frontend import silencer_ui
 
 if __name__ == "__main__":
+    logging.info(f"Working directory: {os.getcwd()}")
+
     silencer_ui.main()
 

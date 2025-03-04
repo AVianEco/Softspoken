@@ -6,11 +6,7 @@ import os
 import math
 import numpy as np
 import torch
-
 import logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 
 class NNDetector():
     """
@@ -25,6 +21,9 @@ class NNDetector():
     def __init__(self, project_manager):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logging.info(f"Device: {self.device}")
+
+        torch.set_num_threads(settings.cpu_threads)
+        torch.set_grad_enabled(False)
 
         # settings coming from the UI
         self.project_manager = project_manager
@@ -45,14 +44,13 @@ class NNDetector():
         Load model weights from disk if the checkpoint file exists.
         """
         if os.path.exists(file_path):
-            checkpoint = torch.load(file_path, map_location=self.device)
+            checkpoint = torch.load(file_path, map_location=self.device, weights_only=True)
             model.load_state_dict(checkpoint['model_state_dict'])
             start_epoch = checkpoint['epoch'] + 1
-            print(f"Checkpoint loaded. Resuming from epoch {start_epoch}")
             return start_epoch
         else:
             print("No checkpoint found. Starting training from scratch.")
-            return 1
+            return -1
 
     def plan_detection_job(self):
         """
