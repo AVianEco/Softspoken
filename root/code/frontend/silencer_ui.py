@@ -908,12 +908,13 @@ class SilenceWorker(QRunnable):
         self.stop_requested = True
 
 class SilenceVoicesScreen(QMainWindow):
-    def __init__(self, project_manager):
+    def __init__(self, project_manager, parent_app_screen):
         super().__init__()
         self.setWindowTitle("Silence Voices")
         self.setMinimumSize(600, 300)
 
         self.project_manager = project_manager
+        self.parent_app_screen = parent_app_screen
 
         # We'll store the output directory path here
         self.output_dir = ""
