@@ -60,21 +60,23 @@ set VENV_DIR=venv
 if exist %VENV_DIR% (
     echo Virtual environment folder "%VENV_DIR%" detected.
 ) else (
-    echo No virtual environment folder "%VENV_DIR%" found.
-    set /p CREATE_VENV="Would you like to create one now? (y/n) "
-    if /i "%CREATE_VENV%"=="y" (
+
+    choice /C YN /M "Would you like to create one now? "
+
+    if %ERRORLEVEL%==2 (
+        echo [ERROR] Virtual environment creation is required. Exiting...
+        pause
+        goto end
+    ) else (
         echo Creating virtual environment...
         python -m venv %VENV_DIR%
-        if ERRORLEVEL 1 (
+        if errorlevel 1 (
             echo [ERROR] Failed to create virtual environment. Exiting...
             pause
             goto end
         )
-    ) else (
-        echo [ERROR] Virtual environment creation is required. Exiting...
-        pause
-        goto end
     )
+
 )
 
 REM ----------------------

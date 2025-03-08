@@ -9,7 +9,7 @@ hop_length = win_length // 2
 step_size = 0.6
 
 # batches sent for predictions
-prediction_batch_size = 128
+prediction_batch_size = 32
 threshold = 0.1
 
 # the application operates at 22050 internally
