@@ -1,8 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-@author: j.
-"""
-
 import torch
 import torchaudio
 import torch.nn as nn
@@ -143,8 +138,7 @@ class SpecUNet_2D(nn.Module):
             ResBlock1D(4, 4),
             nn.Conv1d(4, 1, kernel_size=1)
         )
-        
-    
+     
     def forward(self, x):
         # Compute the mel spectrogram: (batch_size, n_mels, time_steps)
         mel_spec = self.mel_spectrogram(x)

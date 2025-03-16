@@ -1,8 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-@author: j.
-"""
-
 import sys
 import os
 import json
@@ -1080,7 +1075,6 @@ def add_common_menus(main_window):
     help_menu.addAction(user_guide_action)
 
     return menu_bar
-
 
 def main():
     # the project manager hold a list of all projects kept by the user - plus the settings for the currently active project

@@ -1,11 +1,5 @@
-# -*- coding: utf-8 -*-
-"""
-@author: j.
-"""
-
 import io
 import os
-import sys
 import math
 import time
 import pandas as pd
@@ -196,7 +190,6 @@ class ReviewDetectionsScreen(QMainWindow):
 
         #######  media  #######
 
-
         # Create a media player + audio output
         self.player = QMediaPlayer(self)
         self.audio_output = QAudioOutput(self)
@@ -377,16 +370,18 @@ class ReviewDetectionsScreen(QMainWindow):
         2) If valid, refresh the spectrogram.
         3) Save the latest changes to disk.
         """
-        # 1) Validate
+        # Validate
         if self.validate_table_edits() is False:
             # Optionally revert the change if validation fails
             # or show a message to user. For now, we do nothing.
             return
 
-        # 2) Save changes (update df only, don't save to disk yet)
+        self.update_start_end_spinboxes(item.row())
+
+        # Save changes (update df only, don't save to disk yet)
         self.save_review(persist=False) 
 
-        # 3) If valid, refresh the spectrogram
+        # If valid, refresh the spectrogram
         self.refresh_spectrogram()
 
     def on_table_selection_changed(self):
@@ -700,10 +695,8 @@ class ReviewDetectionsScreen(QMainWindow):
         spectrogram, detection_start, detection_end, audio_duration, audio_start, audio_end, file_name = self.load_audio()
         self.display_spectrogram(spectrogram, detection_start, detection_end, audio_duration, audio_start, audio_end, file_name)  
 
-    def select_detection(self, index):
-        self.current_index = index
-
-        # Same logic you already have to load the row’s data:
+    def update_start_end_spinboxes(self, row_index):
+        # refreshes the spinbox values given the selected row
         col_indexes = {}
         for col in range(self.table.columnCount()):
             header_text = self.table.horizontalHeaderItem(col).text()
@@ -712,12 +705,17 @@ class ReviewDetectionsScreen(QMainWindow):
         # get the start and end to play
         start_col = col_indexes["start_time"]
         end_col   = col_indexes["end_time"]
-        detection_start = float(self.table.item(index, start_col).text())
-        detection_end   = float(self.table.item(index, end_col).text())
+        detection_start = float(self.table.item(row_index, start_col).text())
+        detection_end   = float(self.table.item(row_index, end_col).text())
 
         # Put those in the spinboxes
         self.start_spin.setValue(detection_start)
         self.stop_spin.setValue(detection_end)
+
+    def select_detection(self, index):
+        self.current_index = index
+
+        self.update_start_end_spinboxes(self.current_index)
 
         # (Re)load and display spectrogram for that detection
         spectrogram, detection_start, detection_end, audio_duration, audio_start, audio_end, fname = self.load_audio()
