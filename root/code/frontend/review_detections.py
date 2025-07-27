@@ -7,7 +7,7 @@ import numpy as np
 import datetime
 import librosa
 import tempfile, soundfile as sf
-
+from pathlib import Path
 import matplotlib
 matplotlib.use('agg') # non-interactive
 import matplotlib.pyplot as plt
@@ -94,6 +94,33 @@ class ReviewDetectionsScreen(QMainWindow):
             output_path = self.project_manager.current_project['review_file'] 
             df.to_csv(output_path, index=False)
             print(f"Review saved to {output_path}")
+
+            import root.code.frontend.review_exporter as review_exporter
+            exporter = review_exporter.ReviewExportManager(df)
+            exporter.register_transform(review_exporter.AudacityTxtTransform())
+            exporter.register_transform(review_exporter.KaleidoscopeCsvTransform())
+            exporter.register_transform(review_exporter.RavenTxtTransform())
+
+            exporter.export(
+                "audacity",
+                dst=".",                                       # not used by this transform
+                base_dir=Path(output_path).parent,        # REQUIRED
+                project_name=self.project_manager.current_project["name"]  # REQUIRED
+            )
+
+            exporter.export(
+                "kaleidoscope",
+                dst=".",                                       # ignored by this transform
+                base_dir=Path(output_path).parent,        # REQUIRED
+                project_name=self.project_manager.current_project["name"]  # REQUIRED
+            )
+
+            exporter.export(
+                "raven",
+                dst=".",                                    # ignored by this transform
+                base_dir=Path(output_path).parent,      # REQUIRED
+                project_name=self.project_manager.current_project["name"]  # REQUIRED
+            )
 
         elapsed = time.time() - start
         print(f'save_review took: {elapsed}.  persist: {persist}')
@@ -288,6 +315,10 @@ class ReviewDetectionsScreen(QMainWindow):
         # keyboard nav
         self.table.itemSelectionChanged.connect(self.on_table_selection_changed)
 
+        QApplication.instance().aboutToQuit.connect(
+            lambda: self.save_review(persist=True)
+        )
+
     def play_selected_segment(self):
         # 1) Figure out the row. You can rely on self.current_index.
         row_idx = self.current_index
@@ -398,7 +429,7 @@ class ReviewDetectionsScreen(QMainWindow):
         # Just pick the first selected row
         row = selected_rows[0].row()
         self.select_detection(row)
-        
+
     def validate_table_edits(self):
         """
         Perform validation on the table's current data.
@@ -424,6 +455,25 @@ class ReviewDetectionsScreen(QMainWindow):
     def resizeEvent(self, event):
         self.resize_timer.start(100)  # Start/restart the timer with a delay
         self.spectrogram_label.setMinimumSize(1, 1)  # Reset the QLabel's minimum size
+
+    def closeEvent(self, event):
+        """
+        Called automatically whenever the window is asked to close
+        (user click, Alt‑F4, parent closes it, etc.).
+        Ensures the latest table contents are flushed to disk.
+        """
+        # if the user was still typing in a cell, force‑commit the text
+        if self.table.state() == QAbstractItemView.EditingState:
+            current_item = self.table.currentItem()
+            if current_item is not None:
+                self.table.closePersistentEditor(current_item)
+            self.table.clearFocus()              # also ends editing
+
+        # persist the review file
+        self.save_review(persist=True)
+
+        # let the base‑class finish shutting the window down
+        super().closeEvent(event)
 
     def load_audio(self):
         # 1) Build a dictionary of column indices by header name
