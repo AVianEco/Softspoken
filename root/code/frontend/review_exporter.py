@@ -308,9 +308,15 @@ class KaleidoscopeCsvTransform(Transform):
         # ----------------------------------------------------------------
         #  Assemble Kaleidoscope table
         # ----------------------------------------------------------------
+        folders = [os.path.relpath(p, indir) for p in all_paths]
+        folders = [ "" if f == "." else f for f in folders ]    
+
+        if indir[-1] == '\\':
+            indir = indir[ : -1 ]
+        
         out = pd.DataFrame({
             "INDIR":       indir,
-            "FOLDER":      [os.path.relpath(p, indir) for p in all_paths],
+            "FOLDER":      folders,
             "IN FILE*":    df["file_name"],
             "OFFSET":      df["start_time"].round(precision),
             "DURATION":    (df["end_time"] - df["start_time"]).round(precision),
