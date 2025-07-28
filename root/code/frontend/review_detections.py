@@ -221,6 +221,7 @@ class ReviewDetectionsScreen(QMainWindow):
         self.player = QMediaPlayer(self)
         self.audio_output = QAudioOutput(self)
         self.player.setAudioOutput(self.audio_output)
+        self.player.playbackStateChanged.connect(self.on_playback_state_changed)
 
         # Create spinboxes + labels for adjusting start/end
         self.start_label = QLabel("Start time:")
@@ -233,9 +234,17 @@ class ReviewDetectionsScreen(QMainWindow):
         self.stop_spin.setRange(0, 99999)
         self.stop_spin.setSingleStep(0.1)
 
+        self.play_all_button = QPushButton("Play All")
+        self.play_all_button.setStyleSheet("background-color: lightgray")
+        self.play_all_button.clicked.connect(self.play_window_audio)
+
         self.play_button = QPushButton("Play")
         self.play_button.setToolTip("Shift + Space")
         self.play_button.clicked.connect(self.play_selected_segment)
+
+        self.stop_button = QPushButton("Stop")
+        self.stop_button.setEnabled(False)
+        self.stop_button.clicked.connect(self.stop_playback)
 
         # Audio controls layout (two rows)
         self.audio_vlayout = QVBoxLayout()
@@ -248,11 +257,15 @@ class ReviewDetectionsScreen(QMainWindow):
         # add to vertical layout
         self.audio_vlayout.addLayout(self.audio_hlayout)
 
-        # 2) Second row: Play button
+        # 2) Second row: Play All/Play/Stop buttons
+        self.play_all_button.setFixedWidth(80)
         self.play_button.setFixedWidth(80)  # optional sizing
+        self.stop_button.setFixedWidth(80)
         self.play_button_hbox = QHBoxLayout()
-        self.play_button_hbox.addWidget(self.play_button) 
-        self.play_button_hbox.addStretch()  # push the button left, or remove if you like center
+        self.play_button_hbox.addWidget(self.play_all_button)
+        self.play_button_hbox.addWidget(self.play_button)
+        self.play_button_hbox.addWidget(self.stop_button)
+        self.play_button_hbox.addStretch()  # push the buttons left
         self.audio_vlayout.addLayout(self.play_button_hbox)
 
         # Now we have self.audio_vlayout containing:
@@ -351,6 +364,41 @@ class ReviewDetectionsScreen(QMainWindow):
 
         # 7) Start playback
         self.player.play()
+        self.stop_button.setEnabled(True)
+
+    def play_window_audio(self):
+        """Play all audio currently visible in the spectrogram window."""
+        row_idx = self.current_index
+        if row_idx < 0 or row_idx >= len(self.csv_data):
+            return
+
+        start = getattr(self, "visible_audio_start", None)
+        end = getattr(self, "visible_audio_end", None)
+        full_path = None
+
+        if start is None or end is None or end <= start:
+            return
+
+        col_indexes = {self.table.horizontalHeaderItem(c).text(): c for c in range(self.table.columnCount())}
+        file_path = self.table.item(row_idx, col_indexes["file_path"]).text()
+        file_name = self.table.item(row_idx, col_indexes["file_name"]).text()
+        full_path = os.path.join(file_path, file_name)
+
+        data, sr = voice_activity.load_audio_startstop(full_path, (start, end))
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+            temp_wav_path = tmp.name
+        sf.write(temp_wav_path, data, sr)
+        self.player.setSource(QUrl.fromLocalFile(temp_wav_path))
+        self.player.play()
+        self.stop_button.setEnabled(True)
+
+    def stop_playback(self):
+        self.player.stop()
+        self.stop_button.setEnabled(False)
+
+    def on_playback_state_changed(self, state):
+        if state != QMediaPlayer.PlayingState:
+            self.stop_button.setEnabled(False)
 
     def apply_keep(self):
         self.apply_label_to_current_detection(erase_flag=0)
@@ -524,7 +572,12 @@ class ReviewDetectionsScreen(QMainWindow):
 
         # start and end times of audio to load
         audio_start = math.floor( max(0, detection_start - gap_size - adjust_start))
-        audio_end = audio_start + load_duration 
+        audio_end = audio_start + load_duration
+
+        # store for play-all functionality
+        self.visible_audio_start = audio_start
+        self.visible_audio_end = audio_end
+        self.visible_file_path = full_path
     
         # load the audio data and compute the spectrogram
         data, sr = voice_activity.load_audio_startstop(full_path, start_stop = (audio_start, audio_end))
