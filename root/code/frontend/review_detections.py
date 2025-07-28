@@ -263,6 +263,7 @@ class ReviewDetectionsScreen(QMainWindow):
         self.stop_button.setFixedWidth(80)
         self.play_button_hbox = QHBoxLayout()
         self.play_button_hbox.addWidget(self.play_all_button)
+
         self.play_button_hbox.addWidget(self.play_button)
         self.play_button_hbox.addWidget(self.stop_button)
         self.play_button_hbox.addStretch()  # push the buttons left
