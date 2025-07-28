@@ -221,6 +221,7 @@ class ReviewDetectionsScreen(QMainWindow):
         self.player = QMediaPlayer(self)
         self.audio_output = QAudioOutput(self)
         self.player.setAudioOutput(self.audio_output)
+        self.player.playbackStateChanged.connect(self.on_playback_state_changed)
 
         # Create spinboxes + labels for adjusting start/end
         self.start_label = QLabel("Start time:")
@@ -237,6 +238,10 @@ class ReviewDetectionsScreen(QMainWindow):
         self.play_button.setToolTip("Shift + Space")
         self.play_button.clicked.connect(self.play_selected_segment)
 
+        self.stop_button = QPushButton("Stop")
+        self.stop_button.setEnabled(False)
+        self.stop_button.clicked.connect(self.stop_playback)
+
         # Audio controls layout (two rows)
         self.audio_vlayout = QVBoxLayout()
         # 1) First row: Start time, End time
@@ -248,11 +253,13 @@ class ReviewDetectionsScreen(QMainWindow):
         # add to vertical layout
         self.audio_vlayout.addLayout(self.audio_hlayout)
 
-        # 2) Second row: Play button
+        # 2) Second row: Play/Stop buttons
         self.play_button.setFixedWidth(80)  # optional sizing
+        self.stop_button.setFixedWidth(80)
         self.play_button_hbox = QHBoxLayout()
-        self.play_button_hbox.addWidget(self.play_button) 
-        self.play_button_hbox.addStretch()  # push the button left, or remove if you like center
+        self.play_button_hbox.addWidget(self.play_button)
+        self.play_button_hbox.addWidget(self.stop_button)
+        self.play_button_hbox.addStretch()  # push the buttons left
         self.audio_vlayout.addLayout(self.play_button_hbox)
 
         # Now we have self.audio_vlayout containing:
@@ -351,6 +358,15 @@ class ReviewDetectionsScreen(QMainWindow):
 
         # 7) Start playback
         self.player.play()
+        self.stop_button.setEnabled(True)
+
+    def stop_playback(self):
+        self.player.stop()
+        self.stop_button.setEnabled(False)
+
+    def on_playback_state_changed(self, state):
+        if state != QMediaPlayer.PlayingState:
+            self.stop_button.setEnabled(False)
 
     def apply_keep(self):
         self.apply_label_to_current_detection(erase_flag=0)
