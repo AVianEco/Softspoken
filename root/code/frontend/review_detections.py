@@ -235,7 +235,33 @@ class ReviewDetectionsScreen(QMainWindow):
         self.stop_spin.setSingleStep(0.1)
 
         self.play_all_button = QPushButton("Play All")
-        self.play_all_button.setStyleSheet("background-color: lightgray")
+        self.play_all_button.setObjectName("playAllButton")        # unique name for styling
+        self.play_all_button.setCursor(Qt.PointingHandCursor)      # pointer cursor
+        self.play_all_button.setCheckable(True)                    # stay “pressed” while playing
+        self.play_all_button.setStyleSheet("""
+            /* Base */
+            #playAllButton {
+                background-color: lightgray;
+                border: 1px solid #808080;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            /* Hover */
+            #playAllButton:hover:enabled {
+                background-color: #d0d0d0;
+            }
+            /* Pressed OR checked */
+            #playAllButton:pressed:enabled,
+            #playAllButton:checked:enabled {
+                background-color: #a8a8a8;
+            }
+            /* Disabled */
+            #playAllButton:disabled {
+                background-color: #f0f0f0;
+                color: #a0a0a0;
+            }
+        """)
+
         self.play_all_button.clicked.connect(self.play_window_audio)
 
         self.play_button = QPushButton("Play")
@@ -263,7 +289,6 @@ class ReviewDetectionsScreen(QMainWindow):
         self.stop_button.setFixedWidth(80)
         self.play_button_hbox = QHBoxLayout()
         self.play_button_hbox.addWidget(self.play_all_button)
-
         self.play_button_hbox.addWidget(self.play_button)
         self.play_button_hbox.addWidget(self.stop_button)
         self.play_button_hbox.addStretch()  # push the buttons left
@@ -391,15 +416,18 @@ class ReviewDetectionsScreen(QMainWindow):
         sf.write(temp_wav_path, data, sr)
         self.player.setSource(QUrl.fromLocalFile(temp_wav_path))
         self.player.play()
+        self.play_all_button.setChecked(True)   # keep the button in “down” state
         self.stop_button.setEnabled(True)
 
     def stop_playback(self):
         self.player.stop()
         self.stop_button.setEnabled(False)
+        self.play_all_button.setChecked(False)  # reset “Play All” appearance
 
     def on_playback_state_changed(self, state):
         if state != QMediaPlayer.PlayingState:
             self.stop_button.setEnabled(False)
+            self.play_all_button.setChecked(False)   # un‑latch when audio stops
 
     def apply_keep(self):
         self.apply_label_to_current_detection(erase_flag=0)
