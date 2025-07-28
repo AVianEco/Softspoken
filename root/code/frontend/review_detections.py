@@ -672,7 +672,8 @@ class ReviewDetectionsScreen(QMainWindow):
                 cell_item = QTableWidgetItem(display_val)
                 self.table.setItem(i, j, cell_item)
 
-            if row_series.get("review_datetime", "") != '1899-12-31':
+            review_dt = row_series.get("review_datetime", "")
+            if pd.notna(review_dt) and str(review_dt) != "":
                 color = QColor('lightblue')  # reviewed
             else:
                 color = QColor('white')      # not reviewed
@@ -701,8 +702,9 @@ class ReviewDetectionsScreen(QMainWindow):
             if row_idx in selected_rows:
                 continue
 
-            # reviewed if review_datetime != '1899-12-31'
-            reviewed = (self.csv_data.iloc[row_idx]['review_datetime'] != '1899-12-31')
+            # reviewed if review_datetime is not empty/NaN
+            review_val = self.csv_data.iloc[row_idx]['review_datetime']
+            reviewed = pd.notna(review_val) and str(review_val) != ""
             row_color = QColor('lightblue') if reviewed else QColor('white')
 
             for col_idx in range(self.table.columnCount()):
@@ -774,8 +776,9 @@ class ReviewDetectionsScreen(QMainWindow):
     def highlight_row(self, i):
         for j in range(self.table.columnCount()):
             item = self.table.item(i, j)
-            if self.csv_data.iloc[i]['review_datetime'] != '1899-12-31':
-                item.setBackground(QColor('lightblue')) # reviewed
+            review_val = self.csv_data.iloc[i]['review_datetime']
+            if pd.notna(review_val) and str(review_val) != "":
+                item.setBackground(QColor('lightblue'))  # reviewed
             else:
-                item.setBackground(QColor('white'))     # not reviewed
+                item.setBackground(QColor('white'))      # not reviewed
 
