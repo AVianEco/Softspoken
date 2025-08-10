@@ -112,7 +112,7 @@ class ProcessWorker(QRunnable):
                     'end_time': end_time,
                     'erase': 0,
                     'user_comment': '',
-                    'review_datetime': pd.Timestamp('1899-12-31')
+                    'review_datetime': ''
                 }
                 self.detection_project.df.loc[len(self.detection_project.df)] = new_row
 

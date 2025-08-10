@@ -7,7 +7,7 @@ import numpy as np
 import datetime
 import librosa
 import tempfile, soundfile as sf
-
+from pathlib import Path
 import matplotlib
 matplotlib.use('agg') # non-interactive
 import matplotlib.pyplot as plt
@@ -94,6 +94,33 @@ class ReviewDetectionsScreen(QMainWindow):
             output_path = self.project_manager.current_project['review_file'] 
             df.to_csv(output_path, index=False)
             print(f"Review saved to {output_path}")
+
+            import root.code.frontend.review_exporter as review_exporter
+            exporter = review_exporter.ReviewExportManager(df)
+            exporter.register_transform(review_exporter.AudacityTxtTransform())
+            exporter.register_transform(review_exporter.KaleidoscopeCsvTransform())
+            exporter.register_transform(review_exporter.RavenTxtTransform())
+
+            exporter.export(
+                "audacity",
+                dst=".",                                       # not used by this transform
+                base_dir=Path(output_path).parent,        # REQUIRED
+                project_name=self.project_manager.current_project["name"]  # REQUIRED
+            )
+
+            exporter.export(
+                "kaleidoscope",
+                dst=".",                                       # ignored by this transform
+                base_dir=Path(output_path).parent,        # REQUIRED
+                project_name=self.project_manager.current_project["name"]  # REQUIRED
+            )
+
+            exporter.export(
+                "raven",
+                dst=".",                                    # ignored by this transform
+                base_dir=Path(output_path).parent,      # REQUIRED
+                project_name=self.project_manager.current_project["name"]  # REQUIRED
+            )
 
         elapsed = time.time() - start
         print(f'save_review took: {elapsed}.  persist: {persist}')
@@ -207,13 +234,44 @@ class ReviewDetectionsScreen(QMainWindow):
         self.stop_spin.setRange(0, 99999)
         self.stop_spin.setSingleStep(0.1)
 
+        self.play_all_button = QPushButton("Play All")
+        self.play_all_button.setObjectName("playAllButton")        # unique name for styling
+        self.play_all_button.setCursor(Qt.PointingHandCursor)      # pointer cursor
+        self.play_all_button.setCheckable(True)                    # stay “pressed” while playing
+        self.play_all_button.setStyleSheet("""
+            /* Base */
+            #playAllButton {
+                background-color: lightgray;
+                border: 1px solid #808080;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            /* Hover */
+            #playAllButton:hover:enabled {
+                background-color: #d0d0d0;
+            }
+            /* Pressed OR checked */
+            #playAllButton:pressed:enabled,
+            #playAllButton:checked:enabled {
+                background-color: #a8a8a8;
+            }
+            /* Disabled */
+            #playAllButton:disabled {
+                background-color: #f0f0f0;
+                color: #a0a0a0;
+            }
+        """)
+
+        self.play_all_button.clicked.connect(self.play_window_audio)
+
         self.play_button = QPushButton("Play")
         self.play_button.setToolTip("Shift + Space")
         self.play_button.clicked.connect(self.play_selected_segment)
 
         self.stop_button = QPushButton("Stop")
         self.stop_button.setEnabled(False)
-        self.stop_button.clicked.connect(self.stop_audio_playback)
+        self.stop_button.clicked.connect(self.stop_playback)
+
 
         # Audio controls layout (two rows)
         self.audio_vlayout = QVBoxLayout()
@@ -226,13 +284,16 @@ class ReviewDetectionsScreen(QMainWindow):
         # add to vertical layout
         self.audio_vlayout.addLayout(self.audio_hlayout)
 
-        # 2) Second row: Play / Stop buttons
+        # 2) Second row: Play All/Play/Stop buttons
+        self.play_all_button.setFixedWidth(80)
         self.play_button.setFixedWidth(80)  # optional sizing
         self.stop_button.setFixedWidth(80)
         self.play_button_hbox = QHBoxLayout()
+        self.play_button_hbox.addWidget(self.play_all_button)
         self.play_button_hbox.addWidget(self.play_button)
         self.play_button_hbox.addWidget(self.stop_button)
-        self.play_button_hbox.addStretch()  # push the buttons left, or remove if you like center
+        self.play_button_hbox.addStretch()  # push the buttons left
+
         self.audio_vlayout.addLayout(self.play_button_hbox)
 
         # Now we have self.audio_vlayout containing:
@@ -295,6 +356,10 @@ class ReviewDetectionsScreen(QMainWindow):
         # keyboard nav
         self.table.itemSelectionChanged.connect(self.on_table_selection_changed)
 
+        QApplication.instance().aboutToQuit.connect(
+            lambda: self.save_review(persist=True)
+        )
+
     def play_selected_segment(self):
         # 1) Figure out the row. You can rely on self.current_index.
         row_idx = self.current_index
@@ -329,13 +394,43 @@ class ReviewDetectionsScreen(QMainWindow):
         self.player.play()
         self.stop_button.setEnabled(True)
 
-    def stop_audio_playback(self):
+    def play_window_audio(self):
+        """Play all audio currently visible in the spectrogram window."""
+        row_idx = self.current_index
+        if row_idx < 0 or row_idx >= len(self.csv_data):
+            return
+
+        start = getattr(self, "visible_audio_start", None)
+        end = getattr(self, "visible_audio_end", None)
+        full_path = None
+
+        if start is None or end is None or end <= start:
+            return
+
+        col_indexes = {self.table.horizontalHeaderItem(c).text(): c for c in range(self.table.columnCount())}
+        file_path = self.table.item(row_idx, col_indexes["file_path"]).text()
+        file_name = self.table.item(row_idx, col_indexes["file_name"]).text()
+        full_path = os.path.join(file_path, file_name)
+
+        data, sr = voice_activity.load_audio_startstop(full_path, (start, end))
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+            temp_wav_path = tmp.name
+        sf.write(temp_wav_path, data, sr)
+        self.player.setSource(QUrl.fromLocalFile(temp_wav_path))
+        self.player.play()
+        self.play_all_button.setChecked(True)   # keep the button in “down” state
+        self.stop_button.setEnabled(True)
+
+    def stop_playback(self):
         self.player.stop()
         self.stop_button.setEnabled(False)
+        self.play_all_button.setChecked(False)  # reset “Play All” appearance
+
 
     def on_playback_state_changed(self, state):
         if state != QMediaPlayer.PlayingState:
             self.stop_button.setEnabled(False)
+            self.play_all_button.setChecked(False)   # un‑latch when audio stops
 
     def apply_keep(self):
         self.apply_label_to_current_detection(erase_flag=0)
@@ -414,7 +509,7 @@ class ReviewDetectionsScreen(QMainWindow):
         # Just pick the first selected row
         row = selected_rows[0].row()
         self.select_detection(row)
-        
+
     def validate_table_edits(self):
         """
         Perform validation on the table's current data.
@@ -440,6 +535,25 @@ class ReviewDetectionsScreen(QMainWindow):
     def resizeEvent(self, event):
         self.resize_timer.start(100)  # Start/restart the timer with a delay
         self.spectrogram_label.setMinimumSize(1, 1)  # Reset the QLabel's minimum size
+
+    def closeEvent(self, event):
+        """
+        Called automatically whenever the window is asked to close
+        (user click, Alt‑F4, parent closes it, etc.).
+        Ensures the latest table contents are flushed to disk.
+        """
+        # if the user was still typing in a cell, force‑commit the text
+        if self.table.state() == QAbstractItemView.EditingState:
+            current_item = self.table.currentItem()
+            if current_item is not None:
+                self.table.closePersistentEditor(current_item)
+            self.table.clearFocus()              # also ends editing
+
+        # persist the review file
+        self.save_review(persist=True)
+
+        # let the base‑class finish shutting the window down
+        super().closeEvent(event)
 
     def load_audio(self):
         # 1) Build a dictionary of column indices by header name
@@ -490,7 +604,12 @@ class ReviewDetectionsScreen(QMainWindow):
 
         # start and end times of audio to load
         audio_start = math.floor( max(0, detection_start - gap_size - adjust_start))
-        audio_end = audio_start + load_duration 
+        audio_end = audio_start + load_duration
+
+        # store for play-all functionality
+        self.visible_audio_start = audio_start
+        self.visible_audio_end = audio_end
+        self.visible_file_path = full_path
     
         # load the audio data and compute the spectrogram
         data, sr = voice_activity.load_audio_startstop(full_path, start_stop = (audio_start, audio_end))
@@ -638,7 +757,8 @@ class ReviewDetectionsScreen(QMainWindow):
                 cell_item = QTableWidgetItem(display_val)
                 self.table.setItem(i, j, cell_item)
 
-            if row_series.get("review_datetime", "") != '1899-12-31':
+            review_dt = row_series.get("review_datetime", "")
+            if pd.notna(review_dt) and str(review_dt) != "":
                 color = QColor('lightblue')  # reviewed
             else:
                 color = QColor('white')      # not reviewed
@@ -667,8 +787,9 @@ class ReviewDetectionsScreen(QMainWindow):
             if row_idx in selected_rows:
                 continue
 
-            # reviewed if review_datetime != '1899-12-31'
-            reviewed = (self.csv_data.iloc[row_idx]['review_datetime'] != '1899-12-31')
+            # reviewed if review_datetime is not empty/NaN
+            review_val = self.csv_data.iloc[row_idx]['review_datetime']
+            reviewed = pd.notna(review_val) and str(review_val) != ""
             row_color = QColor('lightblue') if reviewed else QColor('white')
 
             for col_idx in range(self.table.columnCount()):
@@ -683,9 +804,26 @@ class ReviewDetectionsScreen(QMainWindow):
         elif direction == "previous":
             self.current_index -= 1
         elif direction == "next_file":
-            self.current_index += 10
+            # jump to the first detection of the next file
+            current_file = self.csv_data.iloc[self.current_index]["file_name"]
+            idx = self.current_index + 1
+            while idx < len(self.csv_data) and \
+                    self.csv_data.iloc[idx]["file_name"] == current_file:
+                idx += 1
+            self.current_index = min(idx, len(self.csv_data) - 1)
         elif direction == "previous_file":
-            self.current_index -= 10
+            # jump to the first detection of the previous file
+            current_file = self.csv_data.iloc[self.current_index]["file_name"]
+            idx = self.current_index - 1
+            while idx >= 0 and self.csv_data.iloc[idx]["file_name"] == current_file:
+                idx -= 1
+            if idx >= 0:
+                prev_file = self.csv_data.iloc[idx]["file_name"]
+                while idx >= 0 and self.csv_data.iloc[idx]["file_name"] == prev_file:
+                    idx -= 1
+                self.current_index = idx + 1
+            else:
+                self.current_index = 0
 
         self.current_index = max(0, min(self.current_index, len(self.csv_data) - 1))
         self.table.selectRow(self.current_index)
@@ -740,8 +878,9 @@ class ReviewDetectionsScreen(QMainWindow):
     def highlight_row(self, i):
         for j in range(self.table.columnCount()):
             item = self.table.item(i, j)
-            if self.csv_data.iloc[i]['review_datetime'] != '1899-12-31':
-                item.setBackground(QColor('lightblue')) # reviewed
+            review_val = self.csv_data.iloc[i]['review_datetime']
+            if pd.notna(review_val) and str(review_val) != "":
+                item.setBackground(QColor('lightblue'))  # reviewed
             else:
-                item.setBackground(QColor('white'))     # not reviewed
+                item.setBackground(QColor('white'))      # not reviewed
 
