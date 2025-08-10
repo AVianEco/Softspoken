@@ -272,6 +272,7 @@ class ReviewDetectionsScreen(QMainWindow):
         self.stop_button.setEnabled(False)
         self.stop_button.clicked.connect(self.stop_playback)
 
+
         # Audio controls layout (two rows)
         self.audio_vlayout = QVBoxLayout()
         # 1) First row: Start time, End time
@@ -292,6 +293,7 @@ class ReviewDetectionsScreen(QMainWindow):
         self.play_button_hbox.addWidget(self.play_button)
         self.play_button_hbox.addWidget(self.stop_button)
         self.play_button_hbox.addStretch()  # push the buttons left
+
         self.audio_vlayout.addLayout(self.play_button_hbox)
 
         # Now we have self.audio_vlayout containing:
@@ -423,6 +425,7 @@ class ReviewDetectionsScreen(QMainWindow):
         self.player.stop()
         self.stop_button.setEnabled(False)
         self.play_all_button.setChecked(False)  # reset “Play All” appearance
+
 
     def on_playback_state_changed(self, state):
         if state != QMediaPlayer.PlayingState:
