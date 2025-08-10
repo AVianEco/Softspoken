@@ -801,9 +801,26 @@ class ReviewDetectionsScreen(QMainWindow):
         elif direction == "previous":
             self.current_index -= 1
         elif direction == "next_file":
-            self.current_index += 10
+            # jump to the first detection of the next file
+            current_file = self.csv_data.iloc[self.current_index]["file_name"]
+            idx = self.current_index + 1
+            while idx < len(self.csv_data) and \
+                    self.csv_data.iloc[idx]["file_name"] == current_file:
+                idx += 1
+            self.current_index = min(idx, len(self.csv_data) - 1)
         elif direction == "previous_file":
-            self.current_index -= 10
+            # jump to the first detection of the previous file
+            current_file = self.csv_data.iloc[self.current_index]["file_name"]
+            idx = self.current_index - 1
+            while idx >= 0 and self.csv_data.iloc[idx]["file_name"] == current_file:
+                idx -= 1
+            if idx >= 0:
+                prev_file = self.csv_data.iloc[idx]["file_name"]
+                while idx >= 0 and self.csv_data.iloc[idx]["file_name"] == prev_file:
+                    idx -= 1
+                self.current_index = idx + 1
+            else:
+                self.current_index = 0
 
         self.current_index = max(0, min(self.current_index, len(self.csv_data) - 1))
         self.table.selectRow(self.current_index)
