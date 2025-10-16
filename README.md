@@ -21,7 +21,7 @@ https://www.python.org/downloads/
 
 ### Using the Launcher - Easy Install
 - Once the above requirements are installed, in this repo click on the green "<> Code" button then select download zip. 
-- Unzip the downloaded repo to a location on your computer where you'd like Softspoke to live.
+- Unzip the downloaded repo to a location on your computer where you'd like Softspoken to live.
 - Open the unzipped Softspoken folder, click into "Softspoken-main" and find the "softspoken_launcher.bat".
 - Double-clicking on this .bat file will open a command-line interface to walk you through installing the dependancies for softspoken, then it will launch the app.
 
@@ -31,6 +31,33 @@ The first-time through the .bat file will take some time to download all the rel
 - You can clone this repo like any other.
 - Install requirements.txt
 - Use .bat file or from project root `python launch.py`
+
+### Utilizing your GPU
+On initial download, Softspoken is designed to run on CPU to allow broad compatibility for many users. If you would like to speed up the processing by utilizing you computer's NVIDIA GPU you can follow the instructions below.
+
+- Ensure you have a NVIDIA GPU
+- Ensure you have the latest drivers installed.
+- Navigate to the Softspoken folder on your computer, type in the file path CMD and press enter.
+- Run the follwing in the command window:
+
+```
+nvidia-smi
+```
+- Take note of the CUDA version.
+- Activate the virtual environment by running:
+
+```
+venv\Scripts\activate
+```
+
+- Then unistall the CPU-only Torch, Torchvision, and Torchaudio by entering the following
+```
+pip uninstall torch torchvision torchaudio
+```
+- Go to [PYTORCH.ORG](https://pytorch.org/get-started/locally/)
+- Enter your OS, and the CUDA version you noted above.
+- Copy and paste the recommended command into the command window from Pytorch Website to install the GPU compatible versions of Torch
+
 
 ## PLATFORM SUPPORT
 The script and the launcher have only been tested on Windows.
