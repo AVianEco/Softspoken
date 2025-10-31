@@ -72,22 +72,22 @@ pip uninstall torch torchvision torchaudio
 
 Below is a quick-start guide to get started. For more detail see the relevant sections below.
 
-####1. Open user interface
-		- Navigate to the `Softspoken-main` folder you unzipped during install.
-		- Double-click the `softspoken_launcher`.bat`` file.
-		- A command window will appear, followed by the Softspoken graphical interface.
+**1. Open user interface**
+- Navigate to the `Softspoken-main` folder you unzipped during install.
+- Double-click the `softspoken_launcher`.bat`` file.
+- A command window will appear, followed by the Softspoken graphical interface.
 		
-####2.  Choose `Start New Project` and name it.
+**2.  Choose `Start New Project` and name it.**
 
-####3. Click `add files` to select `.wav` files for the project.
+**3. Click `add files` to select `.wav` files for the project.**
 
-####4. Follow through the button prompts to `Run Voice Detector`, `Review Detections`, and `Silence Voices` in order.
-		- A new window will appear for each.
-		- Follow through with the actions offered in the windows (e.g. `begin processing` in voice detector, and designating whether to keep or erase detections in `review detections`, etc.) before closing them to save.
-		- Detections need to be created in `Run Voice Detector` before review.
- 		- Detections need to be flagged `erase` in the review screen prior to running silencing batch process.
+**4. Follow through the button prompts to `Run Voice Detector`, `Review Detections`, and `Silence Voices` in order.**
+- A new window will appear for each.
+- Follow through with the actions offered in the windows (e.g. `begin processing` in voice detector, and designating whether to keep or erase detections in `review detections`, etc.) before closing them to save.
+- Detections need to be created in `Run Voice Detector` before review.
+- Detections need to be flagged `erase` in the review screen prior to running silencing batch process.
 		
-####5. Find your data files
+**5. Find your data files**
 		- Your silenced `.wav` will be in the location specified in the `silence detections` window.
 		- Your data outputs (`.csv`, `.txt`) will be found in the softspoken folder under `projects` and the name of the project assigned in step 2.
 
