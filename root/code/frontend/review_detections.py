@@ -485,62 +485,142 @@ class ReviewDetectionsScreen(QMainWindow):
             self.play_all_button.setChecked(False)   # un‑latch when audio stops
 
     def add_detection_row(self):
-        """Insert a new detection for the selected file using the spinbox times."""
+        """Insert a new detection for the selected file using the spinbox times,
+        without rebuilding the entire table.
+        """
         row_idx = self.table.currentRow()
         if row_idx < 0 or row_idx >= self.table.rowCount():
             return
 
+        # Map header text -> column index
         col_indexes = {
             self.table.horizontalHeaderItem(c).text(): c
             for c in range(self.table.columnCount())
         }
 
-        file_path_item = self.table.item(row_idx, col_indexes.get("file_path", -1))
-        file_name_item = self.table.item(row_idx, col_indexes.get("file_name", -1))
+        file_path_col = col_indexes.get("file_path")
+        file_name_col = col_indexes.get("file_name")
+        start_col     = col_indexes.get("start_time")
+
+        if file_path_col is None or file_name_col is None or start_col is None:
+            return  # required columns missing
+
+        file_path_item = self.table.item(row_idx, file_path_col)
+        file_name_item = self.table.item(row_idx, file_name_col)
         if not file_path_item or not file_name_item:
             return
 
         start_time = self.start_spin.value()
-        end_time = self.stop_spin.value()
+        end_time   = self.stop_spin.value()
+        if end_time <= start_time:
+            # optional: give the user a message here
+            return
 
-        new_record = {col: "" for col in self.csv_data.columns}
-        if "ID" in new_record:
-            new_record["ID"] = math.nan
+        new_file_path = file_path_item.text()
+        new_file_name = file_name_item.text()
 
-        new_record.update({
-            "file_path": file_path_item.text(),
-            "file_name": file_name_item.text(),
-            "start_time": start_time,
-            "end_time": end_time,
-        })
+        # ------------------------------------------------------------
+        # Decide where to insert the new row to keep sort order:
+        # sorted by (file_name, start_time)
+        # ------------------------------------------------------------
+        insert_row = self.table.rowCount()  # default: append at the end
 
-        # Explicitly blank optional fields
-        for blank_col in ["erase", "user_comment", "review_datetime"]:
-            if blank_col in new_record:
-                new_record[blank_col] = ""
+        for r in range(self.table.rowCount()):
+            row_file_name_item = self.table.item(r, file_name_col)
+            row_start_item     = self.table.item(r, start_col)
+            if not row_file_name_item or not row_start_item:
+                continue
 
-        updated_df = pd.concat([self.csv_data, pd.DataFrame([new_record])], ignore_index=True)
-        updated_df.sort_values(by=["file_name", "start_time"], ignore_index=True, inplace=True)
-        updated_df = self._ensure_id_column_first(updated_df)
-        updated_df = self._assign_missing_ids(updated_df)
-        self.csv_data = updated_df
+            row_file_name = row_file_name_item.text()
+            try:
+                row_start = float(row_start_item.text())
+            except (TypeError, ValueError):
+                continue  # skip weird rows
 
-        new_row_candidates = self.csv_data[
-            (self.csv_data["file_path"] == new_record.get("file_path"))
-            & (self.csv_data["file_name"] == new_record.get("file_name"))
-            & (self.csv_data["start_time"] == new_record.get("start_time"))
-            & (self.csv_data["end_time"] == new_record.get("end_time"))
-        ]
-        new_row_index = new_row_candidates.index[0] if not new_row_candidates.empty else None
+            # If the existing row should come AFTER the new one, we insert before it
+            if (row_file_name > new_file_name) or (
+                row_file_name == new_file_name and row_start > start_time
+            ):
+                insert_row = r
+                break
 
-        self.populate_table()
+        # ------------------------------------------------------------
+        # Insert the row into the table, but don't fire itemChanged
+        # for every cell we fill.
+        # ------------------------------------------------------------
+        self.table.blockSignals(True)
 
-        if new_row_index is not None:
-            self.table.selectRow(new_row_index)
-            self.current_index = new_row_index
-            self.update_start_end_spinboxes(new_row_index)
+        self.table.insertRow(insert_row)
 
+        for col in range(self.table.columnCount()):
+            header = self.table.horizontalHeaderItem(col).text()
+
+            if header == "ID":
+                # Leave blank; save_review/_assign_missing_ids will fill this.
+                text = ""
+            elif header == "file_path":
+                text = new_file_path
+            elif header == "file_name":
+                text = new_file_name
+            elif header == "start_time":
+                text = f"{start_time:.3f}"
+            elif header == "end_time":
+                text = f"{end_time:.3f}"
+            elif header in ("erase", "user_comment", "review_datetime"):
+                text = ""
+            else:
+                text = ""
+
+            item = QTableWidgetItem(text)
+            self.table.setItem(insert_row, col, item)
+
+        # Mark new row as "not reviewed yet"
+        for col in range(self.table.columnCount()):
+            cell = self.table.item(insert_row, col)
+            if cell:
+                cell.setBackground(QColor("white"))
+
+        self.table.blockSignals(False)
+
+        # ------------------------------------------------------------
+        # Sync self.csv_data from the table and persist to disk.
+        # This will:
+        #   - rebuild the DataFrame from the table
+        #   - assign IDs for blank "ID" cells
+        #   - write CSV + export (because persist=True)
+        # ------------------------------------------------------------
+        self.current_index = insert_row
         self.save_review(persist=True)
+
+        # ---- fill in the ID cell from self.csv_data ----
+        if "ID" in self.csv_data.columns:
+            id_col = self.csv_data.columns.get_loc("ID")
+            new_id = str(self.csv_data.iloc[insert_row]["ID"])
+
+            self.table.blockSignals(True)
+            try:
+                id_item = self.table.item(insert_row, id_col)
+                if id_item is None:
+                    id_item = QTableWidgetItem(new_id)
+                    self.table.setItem(insert_row, id_col, id_item)
+                else:
+                    id_item.setText(new_id)
+            finally:
+                self.table.blockSignals(False)
+
+        # ------------------------------------------------------------
+        # Visually select the new row and refresh UI
+        # ------------------------------------------------------------
+        self.table.blockSignals(True)
+        self.table.selectRow(insert_row)
+        self.table.blockSignals(False)
+
+        # Update spinboxes & spectrogram to show the new detection
+        self.update_start_end_spinboxes(insert_row)
+        spectrogram, detection_start, detection_end, audio_duration, audio_start, audio_end, fname = self.load_audio()
+        self.display_spectrogram(spectrogram, detection_start, detection_end, audio_duration, audio_start, audio_end, fname)
+        self.highlight_all_rows()
+
 
     def apply_keep(self):
         self.apply_label_to_current_detection(erase_flag=0)
