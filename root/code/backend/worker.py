@@ -104,8 +104,15 @@ class ProcessWorker(QRunnable):
             file_path = dirname(file)
             file_name = basename(file)
 
+            next_id = 1
+            if not self.detection_project.df.empty and 'ID' in self.detection_project.df.columns:
+                existing_max = pd.to_numeric(self.detection_project.df['ID'], errors='coerce').max()
+                if not np.isnan(existing_max):
+                    next_id = int(existing_max) + 1
+
             for (start_time, end_time) in speech_regions[file]:
                 new_row = {
+                    'ID': next_id,
                     'file_path': file_path,
                     'file_name': file_name,
                     'start_time': start_time,
@@ -114,6 +121,7 @@ class ProcessWorker(QRunnable):
                     'user_comment': '',
                     'review_datetime': ''
                 }
+                next_id += 1
                 self.detection_project.df.loc[len(self.detection_project.df)] = new_row
 
             # Save partial results so we can resume later

@@ -682,8 +682,9 @@ class ProjectManager:
 class DetectionProject:
     def __init__(self, project_settings):
         self.settings = project_settings
-        
+
         column_types = {
+            'ID': 'int64',
             'file_path': str,
             'file_name': str,
             'start_time': str,
@@ -695,9 +696,27 @@ class DetectionProject:
         
         # use these to setup a new detections df
         self.columns = column_types.keys()
-        
-        if os.path.exists(self.settings.current_project['detections_file']):
-            self.df = pd.read_csv(self.settings.current_project['detections_file']).astype(column_types)
+
+        detections_path = self.settings.current_project['detections_file']
+        if os.path.exists(detections_path):
+            self.df = pd.read_csv(detections_path)
+
+            if 'ID' not in self.df.columns:
+                self.df.insert(0, 'ID', range(1, len(self.df) + 1))
+            else:
+                self.df['ID'] = pd.to_numeric(self.df['ID'], errors='coerce')
+                missing_ids = self.df['ID'].isna()
+                if missing_ids.any():
+                    current_max = self.df['ID'].dropna().max()
+                    start_id = int(current_max) if not np.isnan(current_max) else 0
+                    for offset, idx in enumerate(self.df.index[missing_ids], start=start_id + 1):
+                        self.df.at[idx, 'ID'] = offset
+                self.df['ID'] = self.df['ID'].astype('int64')
+
+            if 'review_datetime' in self.df.columns:
+                self.df['review_datetime'] = pd.to_datetime(self.df['review_datetime'], errors='coerce')
+
+            self.df = self.df.reindex(columns=self.columns).astype(column_types)
         else:
             self.df = pd.DataFrame(columns = self.columns).astype(column_types)
     
