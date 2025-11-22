@@ -304,6 +304,9 @@ class ReviewDetectionsScreen(QMainWindow):
         self.stop_button.setEnabled(False)
         self.stop_button.clicked.connect(self.stop_playback)
 
+        self.add_button = QPushButton("Add")
+        self.add_button.clicked.connect(self.add_detection_row)
+
         # Audio controls layout (two rows)
         self.audio_vlayout = QVBoxLayout()
         # 1) First row: Start time, End time
@@ -319,10 +322,12 @@ class ReviewDetectionsScreen(QMainWindow):
         self.play_all_button.setFixedWidth(80)
         self.play_button.setFixedWidth(80)  # optional sizing
         self.stop_button.setFixedWidth(80)
+        self.add_button.setFixedWidth(80)
         self.play_button_hbox = QHBoxLayout()
         self.play_button_hbox.addWidget(self.play_all_button)
         self.play_button_hbox.addWidget(self.play_button)
         self.play_button_hbox.addWidget(self.stop_button)
+        self.play_button_hbox.addWidget(self.add_button)
         self.play_button_hbox.addStretch()  # push the buttons left
         self.audio_vlayout.addLayout(self.play_button_hbox)
 
@@ -367,9 +372,12 @@ class ReviewDetectionsScreen(QMainWindow):
         keep_shortcut.activated.connect(self.apply_keep)
         erase_shortcut = QShortcut(QKeySequence("Shift+E"), self)
         erase_shortcut.activated.connect(self.apply_erase)
-        # play the audio 
+        # play the audio
         play_audio_shortcut = QShortcut(QKeySequence("Shift+Space"), self)
         play_audio_shortcut.activated.connect(self.play_selected_segment)
+
+        add_shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
+        add_shortcut.activated.connect(self.add_detection_row)
         
 
         self.show_bars_checkbox = QCheckBox("Show Vertical Bars")
@@ -460,6 +468,64 @@ class ReviewDetectionsScreen(QMainWindow):
         if state != QMediaPlayer.PlayingState:
             self.stop_button.setEnabled(False)
             self.play_all_button.setChecked(False)   # un‑latch when audio stops
+
+    def add_detection_row(self):
+        """Insert a new detection for the selected file using the spinbox times."""
+        row_idx = self.table.currentRow()
+        if row_idx < 0 or row_idx >= self.table.rowCount():
+            return
+
+        col_indexes = {
+            self.table.horizontalHeaderItem(c).text(): c
+            for c in range(self.table.columnCount())
+        }
+
+        file_path_item = self.table.item(row_idx, col_indexes.get("file_path", -1))
+        file_name_item = self.table.item(row_idx, col_indexes.get("file_name", -1))
+        if not file_path_item or not file_name_item:
+            return
+
+        start_time = self.start_spin.value()
+        end_time = self.stop_spin.value()
+
+        new_record = {col: "" for col in self.csv_data.columns}
+        if "ID" in new_record:
+            new_record["ID"] = math.nan
+
+        new_record.update({
+            "file_path": file_path_item.text(),
+            "file_name": file_name_item.text(),
+            "start_time": start_time,
+            "end_time": end_time,
+        })
+
+        # Explicitly blank optional fields
+        for blank_col in ["erase", "user_comment", "review_datetime"]:
+            if blank_col in new_record:
+                new_record[blank_col] = ""
+
+        updated_df = pd.concat([self.csv_data, pd.DataFrame([new_record])], ignore_index=True)
+        updated_df.sort_values(by=["file_name", "start_time"], ignore_index=True, inplace=True)
+        updated_df = self._ensure_id_column_first(updated_df)
+        updated_df = self._assign_missing_ids(updated_df)
+        self.csv_data = updated_df
+
+        new_row_candidates = self.csv_data[
+            (self.csv_data["file_path"] == new_record.get("file_path"))
+            & (self.csv_data["file_name"] == new_record.get("file_name"))
+            & (self.csv_data["start_time"] == new_record.get("start_time"))
+            & (self.csv_data["end_time"] == new_record.get("end_time"))
+        ]
+        new_row_index = new_row_candidates.index[0] if not new_row_candidates.empty else None
+
+        self.populate_table()
+
+        if new_row_index is not None:
+            self.table.selectRow(new_row_index)
+            self.current_index = new_row_index
+            self.update_start_end_spinboxes(new_row_index)
+
+        self.save_review(persist=True)
 
     def apply_keep(self):
         self.apply_label_to_current_detection(erase_flag=0)
