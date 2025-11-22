@@ -3,9 +3,10 @@ import os
 import json
 import time
 import logging
+import shutil
 import pandas as pd
 import numpy as np
-import librosa 
+import librosa
 import soundfile as sf
 from datetime import datetime
 
@@ -591,8 +592,9 @@ class ProjectManager:
     def __init__(self):
         # Define the path to the 'projects' folder and the 'projects.json' file
         self.projects_folder = settings.project_dir
+        self.softspoken_outputs_folder = os.path.join(self.projects_folder, 'Softspoken Outputs')
         self.projects_file = os.path.join(self.projects_folder, 'projects.json')
-        
+
         # all projects saved by the user
         self.projects_data = []
         
@@ -602,13 +604,58 @@ class ProjectManager:
         # Check if the 'projects' folder exists, and create it if it doesn't
         if not os.path.exists(self.projects_folder):
             os.mkdir(self.projects_folder)
-        
+
+        os.makedirs(self.softspoken_outputs_folder, exist_ok=True)
+
         # Check if the 'projects.json' file exists, and load it if it does
         if os.path.exists(self.projects_file):
             with open(self.projects_file, 'r') as f:
                 self.projects_data = json.load(f)
+            self._migrate_project_paths()
         else:
             # If the file doesn't exist, create it with an empty JSON object
+            self.write_projects_file()
+
+    def get_softspoken_output_dir(self, project_name):
+        return os.path.join(self.softspoken_outputs_folder, project_name)
+
+    def _move_if_exists(self, old_path, new_path):
+        if not old_path or old_path == new_path:
+            return
+
+        os.makedirs(os.path.dirname(new_path), exist_ok=True)
+
+        if os.path.exists(old_path) and not os.path.exists(new_path):
+            shutil.move(old_path, new_path)
+
+    def _migrate_project_paths(self):
+        updated = False
+
+        for project in self.projects_data:
+            project_name = project.get('name')
+            if not project_name:
+                continue
+
+            project_output_dir = self.get_softspoken_output_dir(project_name)
+            os.makedirs(project_output_dir, exist_ok=True)
+
+            expected_detections = os.path.join(project_output_dir, f"{project_name}_detections.csv")
+            expected_review = os.path.join(project_output_dir, f"{project_name}_review.csv")
+
+            current_detections = project.get('detections_file')
+            current_review = project.get('review_file')
+
+            if current_detections != expected_detections:
+                self._move_if_exists(current_detections, expected_detections)
+                project['detections_file'] = expected_detections
+                updated = True
+
+            if current_review != expected_review:
+                self._move_if_exists(current_review, expected_review)
+                project['review_file'] = expected_review
+                updated = True
+
+        if updated:
             self.write_projects_file()
 
     def get_unprocessed_list(self):
@@ -678,10 +725,12 @@ class ProjectManager:
         project_settings = self.get_new_project_settings()
         project_settings['name'] = name
         project_settings['file_list_file'] = os.path.join(self.projects_folder, name + project_settings['file_list_file'])
-        project_settings['detections_file'] = os.path.join(self.projects_folder, name + project_settings['detections_file'])
-        project_settings['review_file'] = os.path.join(self.projects_folder, name + project_settings['review_file'])
+        output_dir = self.get_softspoken_output_dir(name)
+        os.makedirs(output_dir, exist_ok=True)
+        project_settings['detections_file'] = os.path.join(output_dir, f"{name}_detections.csv")
+        project_settings['review_file'] = os.path.join(output_dir, f"{name}_review.csv")
         project_settings['last_accessed'] = self.get_current_datetime_str()
-        
+
         self.projects_data.append(project_settings)
         self.write_projects_file()
         
