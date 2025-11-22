@@ -384,17 +384,19 @@ class AppScreen(QMainWindow):
         self.step_labels[1].setText(status_text_2)
         self.step_labels[1].setStyleSheet(color_style_2)
 
-        # 3) Silence Voices step – if you have a real file for this step, check it here.
-        #    Otherwise, we'll just put "Not Started" for now:
-        silence_path = getattr(self.project_manager.current_project, 'silence_file', None)
+        # 3) Silence Voices step – check for the status file that marks completion
+        silence_path = self.project_manager.current_project.get('silence_status_file')
         if not silence_path:
-            # If your project data doesn't have a field, we’ll just say "Not Started"
-            self.step_labels[2].setText("Not Started")
-            self.step_labels[2].setStyleSheet("color: red;")
-        else:
+            silence_path = None
+
+        if silence_path:
             status_text_3, color_style_3 = self.compute_step_status(silence_path)
             self.step_labels[2].setText(status_text_3)
             self.step_labels[2].setStyleSheet(color_style_3)
+        else:
+            # If your project data doesn't have a field, we’ll just say "Not Started"
+            self.step_labels[2].setText("Not Started")
+            self.step_labels[2].setStyleSheet("color: red;")
 
     def refresh_file_list(self):
         """
@@ -661,7 +663,8 @@ class ProjectManager:
             'name': '', # unique name of the project
             'file_list_file': '_files.txt',  # list of the individual files
             'detections_file': '_detections.csv',  # thresholded detections
-            'review_file': '_review.csv', 
+            'review_file': '_review.csv',
+            'silence_status_file': '',
             'last_accessed': ''
         }
     
@@ -690,7 +693,20 @@ class ProjectManager:
     def set_active_project(self, project_name):
         # Use a generator expression to find the project with the given name, otherwise return None
         project = next((p for p in self.projects_data if p['name'] == project_name), None)
+        if project is not None:
+            project.setdefault('silence_status_file', '')
+
         self.current_project = project
+
+    def save_current_project(self):
+        if not self.current_project:
+            return
+
+        for idx, project in enumerate(self.projects_data):
+            if project['name'] == self.current_project['name']:
+                self.projects_data[idx] = self.current_project
+                self.write_projects_file()
+                break
 
     def activate_latest(self):
         if len(self.projects_data) == 0:
@@ -1049,8 +1065,10 @@ class SilenceVoicesScreen(QMainWindow):
             QMessageBox.information(self, "No Data", "No data in the review CSV or not loaded.")
             return
 
+        self.output_dir = self.output_dir_edit.text().strip()
+
         # Create the worker
-        self.worker = SilenceWorker(self.review_df, self.output_dir_edit.text().strip())
+        self.worker = SilenceWorker(self.review_df, self.output_dir)
         # Connect signals
         self.worker.signals.fileStarted.connect(self.on_file_started)
         self.worker.signals.fileComplete.connect(self.on_file_complete)
@@ -1095,6 +1113,21 @@ class SilenceVoicesScreen(QMainWindow):
         self.progress_bar.setValue(100)
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
+
+        # mark completion for project status tracking
+        if self.output_dir:
+            status_file = os.path.join(self.output_dir, 'silence_complete.txt')
+            try:
+                with open(status_file, 'w') as f:
+                    f.write(f"Silencing completed at {datetime.now().isoformat()}")
+
+                self.project_manager.current_project['silence_status_file'] = status_file
+                self.project_manager.save_current_project()
+            except Exception as e:
+                logging.error(f"Unable to record silence completion: {e}")
+
+        if self.parent_app_screen:
+            self.parent_app_screen.refresh_step_status()
 
 def add_common_menus(main_window):
     """
