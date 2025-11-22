@@ -328,8 +328,9 @@ class VoiceDetectorScreen(QMainWindow):
             QMessageBox.information(self, "Complete", "All files processed successfully.")
 
 class AppScreen(QMainWindow):
-    def __init__(self, project_manager):
+    def __init__(self, project_manager, home_screen=None):
         self.project_manager = project_manager
+        self.home_screen = home_screen
         super().__init__()
         self.init_ui()
 
@@ -498,6 +499,19 @@ class AppScreen(QMainWindow):
         self.silence_voices_screen.show()
 
     def init_ui(self):
+        menu_bar = self.menuBar()
+        file_menu = menu_bar.addMenu("File")
+
+        close_project_action = QAction("Close Project", self)
+        close_project_action.setShortcut("Ctrl+W")
+        close_project_action.triggered.connect(self.close_project)
+        file_menu.addAction(close_project_action)
+
+        close_app_action = QAction("Close App", self)
+        close_app_action.setShortcut("Ctrl+Q")
+        close_app_action.triggered.connect(QApplication.instance().quit)
+        file_menu.addAction(close_app_action)
+
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
 
@@ -562,6 +576,13 @@ class AppScreen(QMainWindow):
             main_layout.addLayout(button_label_layout)
 
         central_widget.setLayout(main_layout)
+
+    def close_project(self):
+        self.project_manager.current_project = None
+        self.hide()
+
+        if self.home_screen:
+            self.home_screen.show()
 
 # tracks the audio files that are added to the project 
 class ProjectManager:
@@ -1139,11 +1160,11 @@ def main():
     new_project_dialog = NewProjectDialog()
     
     # app screen contains workflow for the detections
-    app_screen = AppScreen(project_manager)
+    app_screen = AppScreen(project_manager, home_screen=home_screen)
     add_common_menus(app_screen)
-    
+
     def open_app_screen():
-        home_screen.close()
+        home_screen.hide()
 
         # pick the last accessed project
         activated = app_screen.project_manager.activate_latest()
@@ -1165,7 +1186,7 @@ def main():
             project_manager.set_active_project(project_name)
             
             # close the home screen and launch the analysis app
-            home_screen.close()
+            home_screen.hide()
             app_screen.show()
         
         else:
@@ -1187,7 +1208,7 @@ def main():
             
             # do something with the selected_item
             project_manager.set_active_project(selected_item)
-            home_screen.close()
+            home_screen.hide()
             app_screen.show()
             
     home_screen.last_project_clicked.connect(open_app_screen)
