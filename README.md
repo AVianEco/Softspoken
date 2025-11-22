@@ -208,7 +208,7 @@ In this screen the user can:
 Softspoken creates the following outputs:
 
 #### project_detections.csv
-After the voice detector is run, in `Softspoken/projects` this file will be created. This CSV contains all the detections as created by the voice detector
+After the voice detector is run, in `Softspoken/projects/Softspoken Outputs/[project-name]` this file will be created. This CSV contains all the detections as created by the voice detector
 The file contains the following headers:
 - *file_path*: the location where the original wav file is saved. 
 - *file_name*: the name of the wav file where the detection occurs. 
@@ -217,7 +217,7 @@ The file contains the following headers:
 - *erase*, *user_comment*, *review_datetime* - these are in the file to mirror the `project_review.csv` file, but the values will be null or zero.
 
 #### project_review.csv
-After opening and closing the review screen for the first time after the voice detector is run, in `Softspoken/projects` this file will be created. Every time the review screen is open and closed this file is updated.
+After opening and closing the review screen for the first time after the voice detector is run, in `Softspoken/projects/Softspoken Outputs/[project-name]` this file will be created. Every time the review screen is open and closed this file is updated.
 This CSV contains all the detections either original or edited by the reviewer. It also includes all the reviewers designations on whether to keep or silence (erase) detections.
 The file contains the following headers:
 - *file_path*, *file_name*, *start_time*, *end_time*- these are the same as defined for the `project_detections.csv`.

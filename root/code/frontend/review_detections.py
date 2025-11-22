@@ -145,24 +145,26 @@ class ReviewDetectionsScreen(QMainWindow):
             exporter.register_transform(review_exporter.KaleidoscopeCsvTransform())
             exporter.register_transform(review_exporter.RavenTxtTransform())
 
+            base_dir = Path(self.project_manager.projects_folder)
+
             exporter.export(
                 "audacity",
                 dst=".",                                       # not used by this transform
-                base_dir=Path(output_path).parent,        # REQUIRED
+                base_dir=base_dir,        # REQUIRED
                 project_name=self.project_manager.current_project["name"]  # REQUIRED
             )
 
             exporter.export(
                 "kaleidoscope",
                 dst=".",                                       # ignored by this transform
-                base_dir=Path(output_path).parent,        # REQUIRED
+                base_dir=base_dir,        # REQUIRED
                 project_name=self.project_manager.current_project["name"]  # REQUIRED
             )
 
             exporter.export(
                 "raven",
                 dst=".",                                    # ignored by this transform
-                base_dir=Path(output_path).parent,      # REQUIRED
+                base_dir=base_dir,      # REQUIRED
                 project_name=self.project_manager.current_project["name"]  # REQUIRED
             )
 
@@ -321,6 +323,9 @@ class ReviewDetectionsScreen(QMainWindow):
         self.add_button = QPushButton("Add")
         self.add_button.clicked.connect(self.add_detection_row)
 
+        self.delete_button = QPushButton("Delete")
+        self.delete_button.clicked.connect(self.delete_selected_rows)
+
         # Audio controls layout (two rows)
         self.audio_vlayout = QVBoxLayout()
         # 1) First row: Start time, End time
@@ -337,11 +342,13 @@ class ReviewDetectionsScreen(QMainWindow):
         self.play_button.setFixedWidth(80)  # optional sizing
         self.stop_button.setFixedWidth(80)
         self.add_button.setFixedWidth(80)
+        self.delete_button.setFixedWidth(80)
         self.play_button_hbox = QHBoxLayout()
         self.play_button_hbox.addWidget(self.play_all_button)
         self.play_button_hbox.addWidget(self.play_button)
         self.play_button_hbox.addWidget(self.stop_button)
         self.play_button_hbox.addWidget(self.add_button)
+        self.play_button_hbox.addWidget(self.delete_button)
         self.play_button_hbox.addStretch()  # push the buttons left
         self.audio_vlayout.addLayout(self.play_button_hbox)
 
@@ -362,7 +369,7 @@ class ReviewDetectionsScreen(QMainWindow):
         self.bottom_widget = QWidget()
         self.table = QTableWidget()
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)   # Force table to select entire rows, not individual cells
-        self.table.setSelectionMode(QAbstractItemView.SingleSelection)  # Allow only one row to be selected at a time
+        self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)  # Allow multi-row selection
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive) # or... ResizeToContents ?
         self.table.setItemDelegate(ActiveCellOutlineDelegate(self.table))
 
@@ -393,6 +400,9 @@ class ReviewDetectionsScreen(QMainWindow):
 
         add_shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
         add_shortcut.activated.connect(self.add_detection_row)
+
+        delete_shortcut = QShortcut(QKeySequence(Qt.Key_Delete), self)
+        delete_shortcut.activated.connect(self.delete_selected_rows)
         
 
         self.show_bars_checkbox = QCheckBox("Show Vertical Bars")
