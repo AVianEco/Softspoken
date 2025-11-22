@@ -145,24 +145,26 @@ class ReviewDetectionsScreen(QMainWindow):
             exporter.register_transform(review_exporter.KaleidoscopeCsvTransform())
             exporter.register_transform(review_exporter.RavenTxtTransform())
 
+            base_dir = Path(self.project_manager.projects_folder)
+
             exporter.export(
                 "audacity",
                 dst=".",                                       # not used by this transform
-                base_dir=Path(output_path).parent,        # REQUIRED
+                base_dir=base_dir,        # REQUIRED
                 project_name=self.project_manager.current_project["name"]  # REQUIRED
             )
 
             exporter.export(
                 "kaleidoscope",
                 dst=".",                                       # ignored by this transform
-                base_dir=Path(output_path).parent,        # REQUIRED
+                base_dir=base_dir,        # REQUIRED
                 project_name=self.project_manager.current_project["name"]  # REQUIRED
             )
 
             exporter.export(
                 "raven",
                 dst=".",                                    # ignored by this transform
-                base_dir=Path(output_path).parent,      # REQUIRED
+                base_dir=base_dir,      # REQUIRED
                 project_name=self.project_manager.current_project["name"]  # REQUIRED
             )
 
