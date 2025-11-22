@@ -14,14 +14,28 @@ import matplotlib.pyplot as plt
 
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtCore import Qt, QByteArray, QTimer, Signal, QUrl
-from PySide6.QtGui import QPixmap, QColor, QKeySequence, QShortcut
+from PySide6.QtGui import QPixmap, QColor, QKeySequence, QShortcut, QPen
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, 
+    QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout,
     QPushButton, QLineEdit, QTableWidget, QTableWidgetItem, QSplitter, QWidget,
-    QCheckBox, QAbstractItemView, QSpacerItem, QHeaderView, QSizePolicy, QDoubleSpinBox
+    QCheckBox, QAbstractItemView, QSpacerItem, QHeaderView, QSizePolicy, QDoubleSpinBox,
+    QStyledItemDelegate, QStyle
 )
 
 from root.code.backend import voice_activity, settings
+
+
+class ActiveCellOutlineDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        super().paint(painter, option, index)
+
+        painter.save()
+        has_focus = option.state & QStyle.State_HasFocus
+        pen_color = QColor('black') if has_focus else QColor('gray')
+        pen_width = 2 if has_focus else 1
+        painter.setPen(QPen(pen_color, pen_width))
+        painter.drawRect(option.rect.adjusted(0, 0, -1, -1))
+        painter.restore()
 
 class DebouncedSplitter(QSplitter):
     # Custom signal that we will emit once the user has stopped dragging
@@ -350,6 +364,7 @@ class ReviewDetectionsScreen(QMainWindow):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)   # Force table to select entire rows, not individual cells
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)  # Allow only one row to be selected at a time
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive) # or... ResizeToContents ?
+        self.table.setItemDelegate(ActiveCellOutlineDelegate(self.table))
 
         self.bottom_widget.setLayout(QVBoxLayout())
         self.bottom_widget.layout().addWidget(self.table)
