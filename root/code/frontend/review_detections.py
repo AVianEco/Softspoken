@@ -45,6 +45,33 @@ class DebouncedSplitter(QSplitter):
         self.debouncedResize.emit()
 
 class ReviewDetectionsScreen(QMainWindow):
+    def _ensure_id_column_first(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Make sure an ID column exists and is the first column."""
+        df = df.copy()
+
+        if "ID" not in df.columns:
+            df.insert(0, "ID", range(1, len(df) + 1))
+            return df
+
+        ordered_columns = ["ID"] + [col for col in df.columns if col != "ID"]
+        return df[ordered_columns]
+
+    def _assign_missing_ids(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Preserve existing IDs and generate new ones for any new rows."""
+        df = df.copy()
+        numeric_ids = pd.to_numeric(df["ID"], errors="coerce")
+
+        max_existing_id = numeric_ids.max(skipna=True)
+        next_id = int(max_existing_id) + 1 if pd.notna(max_existing_id) else 1
+
+        for idx, value in numeric_ids.items():
+            if pd.isna(value):
+                numeric_ids.at[idx] = next_id
+                next_id += 1
+
+        df["ID"] = numeric_ids.astype(int)
+        return df
+
     def on_splitter_moved(self, pos, index):
         # Restart timer every time the splitter is moved
         self.splitter_timer.start(100)
@@ -75,6 +102,9 @@ class ReviewDetectionsScreen(QMainWindow):
 
         # Convert to a pandas DataFrame
         df = pd.DataFrame(table_data, columns=headers)
+        df = self._ensure_id_column_first(df)
+
+        df = self._assign_missing_ids(df)
         # Cast numeric columns as needed
         if "start_time" in df.columns:
             df["start_time"] = pd.to_numeric(df["start_time"], errors="coerce")
@@ -148,6 +178,8 @@ class ReviewDetectionsScreen(QMainWindow):
                                                   "start_time", "end_time",
                                                   "erase", "user_comment",
                                                   "review_datetime"])
+
+        self.csv_data = self._ensure_id_column_first(self.csv_data)
 
         self.current_index = 0
         self.zoom_level = 1
