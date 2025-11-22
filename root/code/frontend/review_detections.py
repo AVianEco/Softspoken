@@ -144,9 +144,9 @@ class ReviewDetectionsScreen(QMainWindow):
             self.filter_by_minimum_detection_len()
         # Fallback if no csv_path provided or file doesn't exist
         else:
-            self.csv_data = pd.DataFrame(columns=["file_path", "file_name", 
-                                                  "start_time", "end_time", 
-                                                  "erase", "user_comment", 
+            self.csv_data = pd.DataFrame(columns=["ID", "file_path", "file_name",
+                                                  "start_time", "end_time",
+                                                  "erase", "user_comment",
                                                   "review_datetime"])
 
         self.current_index = 0
