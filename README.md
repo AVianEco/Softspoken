@@ -208,7 +208,7 @@ In this screen the user can:
 Softspoken creates the following outputs:
 
 #### project_detections.csv
-After the voice detector is run, in `Softspoken/projects` this file will be created. This CSV contains all the detections as created by the voice detector
+After the voice detector is run, in `Softspoken/projects/Softspoken Outputs/[project-name]` this file will be created. This CSV contains all the detections as created by the voice detector
 The file contains the following headers:
 - *file_path*: the location where the original wav file is saved. 
 - *file_name*: the name of the wav file where the detection occurs. 
@@ -217,13 +217,16 @@ The file contains the following headers:
 - *erase*, *user_comment*, *review_datetime* - these are in the file to mirror the `project_review.csv` file, but the values will be null or zero.
 
 #### project_review.csv
-After opening and closing the review screen for the first time after the voice detector is run, in `Softspoken/projects` this file will be created. Every time the review screen is open and closed this file is updated.
+After opening and closing the review screen for the first time after the voice detector is run, in `Softspoken/projects/Softspoken Outputs/[project-name]` this file will be created. Every time the review screen is open and closed this file is updated.
 This CSV contains all the detections either original or edited by the reviewer. It also includes all the reviewers designations on whether to keep or silence (erase) detections.
 The file contains the following headers:
 - *file_path*, *file_name*, *start_time*, *end_time*- these are the same as defined for the `project_detections.csv`.
 - *erase*: a binary 1 (yes) or 0 (no) to indicate whether the user wants to keep (0) or erase (1) the detection at the silence voices step. By default before review all values are set to zero (0), i.e, keep.
 - *user_comment*: a free-form text box where the user can add comments into during the review step.
 - *review_datetime*: the date and time when the user designated keep or erase this detection in the review screen. By default before review, this field is blank or null.
+
+#### project_files.txt
+When files are added or removed from a project, the full list is tracked in `Softspoken/projects/Softspoken Outputs/[project-name]/projectname_files.txt` alongside the detection and review CSV outputs.
 
 #### Audacity Outputs
 After opening and closing the review screen for the first time after the voice detector is run, in `Softspoken/projects/Audacity Outputs` a project-named folder will be created.
