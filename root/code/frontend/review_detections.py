@@ -173,26 +173,42 @@ class ReviewDetectionsScreen(QMainWindow):
 
 
     def delete_selected_rows(self):
-        selected_rows = sorted({index.row() for index in self.table.selectionModel().selectedRows()})
+        selected_rows = sorted(
+            {index.row() for index in self.table.selectionModel().selectedRows()}
+        )
         if not selected_rows:
             return
 
-        self.csv_data = self.csv_data.drop(self.csv_data.index[selected_rows]).reset_index(drop=True)
+        # --- Remove rows directly from the table (bottom -> top so indices don't shift) ---
+        self.table.blockSignals(True)
+        try:
+            for row in reversed(selected_rows):
+                self.table.removeRow(row)
+        finally:
+            self.table.blockSignals(False)
 
-        if len(self.csv_data) == 0:
-            self.populate_table()
+        # If there are no rows left, just save and bail
+        if self.table.rowCount() == 0:
             self.current_index = 0
             self.save_review(persist=True)
+            self.spectrogram_label.clear()
             return
 
-        self.current_index = min(selected_rows[0], len(self.csv_data) - 1)
-        self.populate_table()
+        # New "current" row: the row that moved into the first deleted position,
+        # clamped to the last row if we deleted from the end.
+        self.current_index = min(selected_rows[0], self.table.rowCount() - 1)
+
+        # Sync DataFrame + write CSV/exports (IDs of remaining rows are preserved)
+        self.save_review(persist=True)
+
+        # Reselect row and refresh UI
+        self.table.blockSignals(True)
         self.table.selectRow(self.current_index)
+        self.table.blockSignals(False)
+
         self.update_start_end_spinboxes(self.current_index)
         self.highlight_all_rows()
-        self.save_review(persist=True)
         self.refresh_spectrogram()
-
 
     def __init__(self, project_manager, parent_app_screen):
         super().__init__()
