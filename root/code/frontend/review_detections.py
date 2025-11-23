@@ -171,6 +171,29 @@ class ReviewDetectionsScreen(QMainWindow):
         elapsed = time.time() - start
         print(f'save_review took: {elapsed}.  persist: {persist}')
 
+
+    def delete_selected_rows(self):
+        selected_rows = sorted({index.row() for index in self.table.selectionModel().selectedRows()})
+        if not selected_rows:
+            return
+
+        self.csv_data = self.csv_data.drop(self.csv_data.index[selected_rows]).reset_index(drop=True)
+
+        if len(self.csv_data) == 0:
+            self.populate_table()
+            self.current_index = 0
+            self.save_review(persist=True)
+            return
+
+        self.current_index = min(selected_rows[0], len(self.csv_data) - 1)
+        self.populate_table()
+        self.table.selectRow(self.current_index)
+        self.update_start_end_spinboxes(self.current_index)
+        self.highlight_all_rows()
+        self.save_review(persist=True)
+        self.refresh_spectrogram()
+
+
     def __init__(self, project_manager, parent_app_screen):
         super().__init__()
         self.setWindowTitle(f"Review Detections: {project_manager.current_project['name']}")
@@ -553,6 +576,7 @@ class ReviewDetectionsScreen(QMainWindow):
             ):
                 insert_row = r
                 break
+
 
         # ------------------------------------------------------------
         # Insert the row into the table, but don't fire itemChanged
