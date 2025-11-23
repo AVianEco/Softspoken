@@ -225,6 +225,9 @@ The file contains the following headers:
 - *user_comment*: a free-form text box where the user can add comments into during the review step.
 - *review_datetime*: the date and time when the user designated keep or erase this detection in the review screen. By default before review, this field is blank or null.
 
+#### project_files.txt
+When files are added or removed from a project, the full list is tracked in `Softspoken/projects/Softspoken Outputs/[project-name]/projectname_files.txt` alongside the detection and review CSV outputs.
+
 #### Audacity Outputs
 After opening and closing the review screen for the first time after the voice detector is run, in `Softspoken/projects/Audacity Outputs` a project-named folder will be created.
 For every project Softspoken creates a text file for each `.wav` file with human detections. 

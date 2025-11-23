@@ -641,9 +641,11 @@ class ProjectManager:
 
             expected_detections = os.path.join(project_output_dir, f"{project_name}_detections.csv")
             expected_review = os.path.join(project_output_dir, f"{project_name}_review.csv")
+            expected_file_list = os.path.join(project_output_dir, f"{project_name}_files.txt")
 
             current_detections = project.get('detections_file')
             current_review = project.get('review_file')
+            current_file_list = project.get('file_list_file')
 
             if current_detections != expected_detections:
                 self._move_if_exists(current_detections, expected_detections)
@@ -653,6 +655,11 @@ class ProjectManager:
             if current_review != expected_review:
                 self._move_if_exists(current_review, expected_review)
                 project['review_file'] = expected_review
+                updated = True
+
+            if current_file_list != expected_file_list:
+                self._move_if_exists(current_file_list, expected_file_list)
+                project['file_list_file'] = expected_file_list
                 updated = True
 
         if updated:
@@ -724,9 +731,9 @@ class ProjectManager:
     def add_project(self, name):
         project_settings = self.get_new_project_settings()
         project_settings['name'] = name
-        project_settings['file_list_file'] = os.path.join(self.projects_folder, name + project_settings['file_list_file'])
         output_dir = self.get_softspoken_output_dir(name)
         os.makedirs(output_dir, exist_ok=True)
+        project_settings['file_list_file'] = os.path.join(output_dir, f"{name}_files.txt")
         project_settings['detections_file'] = os.path.join(output_dir, f"{name}_detections.csv")
         project_settings['review_file'] = os.path.join(output_dir, f"{name}_review.csv")
         project_settings['last_accessed'] = self.get_current_datetime_str()
