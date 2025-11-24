@@ -35,7 +35,7 @@ To download and use Softspoken, first download Python Version 3.12 or newer.
 #### Using the Launcher - Easy Install
 - Once the above requirements are installed, in this repo click on the green `<> Code` button then select download zip. 
 - Unzip the downloaded repo folder to a location on your computer where you'd like Softspoken to live.
-- Open the unzipped Softspoken folder, click into `Softspoken-main` and find the `softspoken_launcher`.bat``.
+- Open the unzipped Softspoken folder, click into `Softspoken-main` and find the `softspoken_launcher.bat`.
 - Double-clicking on this `.bat` file will open a command-line interface to walk you through installing the dependencies for softspoken, then it will launch the app.
 
 The first-time through the `.bat` file will take some time to download all the relevant requirements and set up the environment. Once through the first time, the `.bat` file can be clicked at any time to launch the app relatively quickly.
@@ -80,7 +80,7 @@ Below is a quick-start guide to get started. For more detail see the relevant se
 
 *1. Open user interface*
 - Navigate to the `Softspoken-main` folder you unzipped during install.
-- Double-click the `softspoken_launcher`.bat`` file.
+- Double-click the `softspoken_launcher.bat` file.
 - A command window will appear, followed by the Softspoken graphical interface.
 		
 *2.  Choose `Start New Project` and name it.*
