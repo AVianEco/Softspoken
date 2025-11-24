@@ -14,14 +14,28 @@ import matplotlib.pyplot as plt
 
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtCore import Qt, QByteArray, QTimer, Signal, QUrl
-from PySide6.QtGui import QPixmap, QColor, QKeySequence, QShortcut
+from PySide6.QtGui import QPixmap, QColor, QKeySequence, QShortcut, QPen
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, 
+    QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout,
     QPushButton, QLineEdit, QTableWidget, QTableWidgetItem, QSplitter, QWidget,
-    QCheckBox, QAbstractItemView, QSpacerItem, QHeaderView, QSizePolicy, QDoubleSpinBox
+    QCheckBox, QAbstractItemView, QSpacerItem, QHeaderView, QSizePolicy, QDoubleSpinBox,
+    QStyledItemDelegate, QStyle
 )
 
 from root.code.backend import voice_activity, settings
+
+
+class ActiveCellOutlineDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        super().paint(painter, option, index)
+
+        painter.save()
+        has_focus = option.state & QStyle.State_HasFocus
+        pen_color = QColor('black') if has_focus else QColor('gray')
+        pen_width = 2 if has_focus else 1
+        painter.setPen(QPen(pen_color, pen_width))
+        painter.drawRect(option.rect.adjusted(0, 0, -1, -1))
+        painter.restore()
 
 class DebouncedSplitter(QSplitter):
     # Custom signal that we will emit once the user has stopped dragging
@@ -45,6 +59,33 @@ class DebouncedSplitter(QSplitter):
         self.debouncedResize.emit()
 
 class ReviewDetectionsScreen(QMainWindow):
+    def _ensure_id_column_first(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Make sure an ID column exists and is the first column."""
+        df = df.copy()
+
+        if "ID" not in df.columns:
+            df.insert(0, "ID", range(1, len(df) + 1))
+            return df
+
+        ordered_columns = ["ID"] + [col for col in df.columns if col != "ID"]
+        return df[ordered_columns]
+
+    def _assign_missing_ids(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Preserve existing IDs and generate new ones for any new rows."""
+        df = df.copy()
+        numeric_ids = pd.to_numeric(df["ID"], errors="coerce")
+
+        max_existing_id = numeric_ids.max(skipna=True)
+        next_id = int(max_existing_id) + 1 if pd.notna(max_existing_id) else 1
+
+        for idx, value in numeric_ids.items():
+            if pd.isna(value):
+                numeric_ids.at[idx] = next_id
+                next_id += 1
+
+        df["ID"] = numeric_ids.astype(int)
+        return df
+
     def on_splitter_moved(self, pos, index):
         # Restart timer every time the splitter is moved
         self.splitter_timer.start(100)
@@ -75,6 +116,9 @@ class ReviewDetectionsScreen(QMainWindow):
 
         # Convert to a pandas DataFrame
         df = pd.DataFrame(table_data, columns=headers)
+        df = self._ensure_id_column_first(df)
+
+        df = self._assign_missing_ids(df)
         # Cast numeric columns as needed
         if "start_time" in df.columns:
             df["start_time"] = pd.to_numeric(df["start_time"], errors="coerce")
@@ -101,29 +145,70 @@ class ReviewDetectionsScreen(QMainWindow):
             exporter.register_transform(review_exporter.KaleidoscopeCsvTransform())
             exporter.register_transform(review_exporter.RavenTxtTransform())
 
+            base_dir = Path(self.project_manager.projects_folder)
+
             exporter.export(
                 "audacity",
                 dst=".",                                       # not used by this transform
-                base_dir=Path(output_path).parent,        # REQUIRED
+                base_dir=base_dir,        # REQUIRED
                 project_name=self.project_manager.current_project["name"]  # REQUIRED
             )
 
             exporter.export(
                 "kaleidoscope",
                 dst=".",                                       # ignored by this transform
-                base_dir=Path(output_path).parent,        # REQUIRED
+                base_dir=base_dir,        # REQUIRED
                 project_name=self.project_manager.current_project["name"]  # REQUIRED
             )
 
             exporter.export(
                 "raven",
                 dst=".",                                    # ignored by this transform
-                base_dir=Path(output_path).parent,      # REQUIRED
+                base_dir=base_dir,      # REQUIRED
                 project_name=self.project_manager.current_project["name"]  # REQUIRED
             )
 
         elapsed = time.time() - start
         print(f'save_review took: {elapsed}.  persist: {persist}')
+
+
+    def delete_selected_rows(self):
+        selected_rows = sorted(
+            {index.row() for index in self.table.selectionModel().selectedRows()}
+        )
+        if not selected_rows:
+            return
+
+        # --- Remove rows directly from the table (bottom -> top so indices don't shift) ---
+        self.table.blockSignals(True)
+        try:
+            for row in reversed(selected_rows):
+                self.table.removeRow(row)
+        finally:
+            self.table.blockSignals(False)
+
+        # If there are no rows left, just save and bail
+        if self.table.rowCount() == 0:
+            self.current_index = 0
+            self.save_review(persist=True)
+            self.spectrogram_label.clear()
+            return
+
+        # New "current" row: the row that moved into the first deleted position,
+        # clamped to the last row if we deleted from the end.
+        self.current_index = min(selected_rows[0], self.table.rowCount() - 1)
+
+        # Sync DataFrame + write CSV/exports (IDs of remaining rows are preserved)
+        self.save_review(persist=True)
+
+        # Reselect row and refresh UI
+        self.table.blockSignals(True)
+        self.table.selectRow(self.current_index)
+        self.table.blockSignals(False)
+
+        self.update_start_end_spinboxes(self.current_index)
+        self.highlight_all_rows()
+        self.refresh_spectrogram()
 
     def __init__(self, project_manager, parent_app_screen):
         super().__init__()
@@ -144,10 +229,12 @@ class ReviewDetectionsScreen(QMainWindow):
             self.filter_by_minimum_detection_len()
         # Fallback if no csv_path provided or file doesn't exist
         else:
-            self.csv_data = pd.DataFrame(columns=["file_path", "file_name", 
-                                                  "start_time", "end_time", 
-                                                  "erase", "user_comment", 
+            self.csv_data = pd.DataFrame(columns=["ID", "file_path", "file_name",
+                                                  "start_time", "end_time",
+                                                  "erase", "user_comment",
                                                   "review_datetime"])
+
+        self.csv_data = self._ensure_id_column_first(self.csv_data)
 
         self.current_index = 0
         self.zoom_level = 1
@@ -272,6 +359,11 @@ class ReviewDetectionsScreen(QMainWindow):
         self.stop_button.setEnabled(False)
         self.stop_button.clicked.connect(self.stop_playback)
 
+        self.add_button = QPushButton("Add")
+        self.add_button.clicked.connect(self.add_detection_row)
+
+        self.delete_button = QPushButton("Delete")
+        self.delete_button.clicked.connect(self.delete_selected_rows)
 
         # Audio controls layout (two rows)
         self.audio_vlayout = QVBoxLayout()
@@ -288,10 +380,14 @@ class ReviewDetectionsScreen(QMainWindow):
         self.play_all_button.setFixedWidth(80)
         self.play_button.setFixedWidth(80)  # optional sizing
         self.stop_button.setFixedWidth(80)
+        self.add_button.setFixedWidth(80)
+        self.delete_button.setFixedWidth(80)
         self.play_button_hbox = QHBoxLayout()
         self.play_button_hbox.addWidget(self.play_all_button)
         self.play_button_hbox.addWidget(self.play_button)
         self.play_button_hbox.addWidget(self.stop_button)
+        self.play_button_hbox.addWidget(self.add_button)
+        self.play_button_hbox.addWidget(self.delete_button)
         self.play_button_hbox.addStretch()  # push the buttons left
 
         self.audio_vlayout.addLayout(self.play_button_hbox)
@@ -313,8 +409,9 @@ class ReviewDetectionsScreen(QMainWindow):
         self.bottom_widget = QWidget()
         self.table = QTableWidget()
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)   # Force table to select entire rows, not individual cells
-        self.table.setSelectionMode(QAbstractItemView.SingleSelection)  # Allow only one row to be selected at a time
+        self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)  # Allow multi-row selection
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive) # or... ResizeToContents ?
+        self.table.setItemDelegate(ActiveCellOutlineDelegate(self.table))
 
         self.bottom_widget.setLayout(QVBoxLayout())
         self.bottom_widget.layout().addWidget(self.table)
@@ -337,9 +434,15 @@ class ReviewDetectionsScreen(QMainWindow):
         keep_shortcut.activated.connect(self.apply_keep)
         erase_shortcut = QShortcut(QKeySequence("Shift+E"), self)
         erase_shortcut.activated.connect(self.apply_erase)
-        # play the audio 
+        # play the audio
         play_audio_shortcut = QShortcut(QKeySequence("Shift+Space"), self)
         play_audio_shortcut.activated.connect(self.play_selected_segment)
+
+        add_shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
+        add_shortcut.activated.connect(self.add_detection_row)
+
+        delete_shortcut = QShortcut(QKeySequence(Qt.Key_Delete), self)
+        delete_shortcut.activated.connect(self.delete_selected_rows)
         
 
         self.show_bars_checkbox = QCheckBox("Show Vertical Bars")
@@ -431,6 +534,145 @@ class ReviewDetectionsScreen(QMainWindow):
         if state != QMediaPlayer.PlayingState:
             self.stop_button.setEnabled(False)
             self.play_all_button.setChecked(False)   # un‑latch when audio stops
+
+    def add_detection_row(self):
+        """Insert a new detection for the selected file using the spinbox times,
+        without rebuilding the entire table.
+        """
+        row_idx = self.table.currentRow()
+        if row_idx < 0 or row_idx >= self.table.rowCount():
+            return
+
+        # Map header text -> column index
+        col_indexes = {
+            self.table.horizontalHeaderItem(c).text(): c
+            for c in range(self.table.columnCount())
+        }
+
+        file_path_col = col_indexes.get("file_path")
+        file_name_col = col_indexes.get("file_name")
+        start_col     = col_indexes.get("start_time")
+
+        if file_path_col is None or file_name_col is None or start_col is None:
+            return  # required columns missing
+
+        file_path_item = self.table.item(row_idx, file_path_col)
+        file_name_item = self.table.item(row_idx, file_name_col)
+        if not file_path_item or not file_name_item:
+            return
+
+        start_time = self.start_spin.value()
+        end_time   = self.stop_spin.value()
+        if end_time <= start_time:
+            # optional: give the user a message here
+            return
+
+        new_file_path = file_path_item.text()
+        new_file_name = file_name_item.text()
+
+        # ------------------------------------------------------------
+        # Decide where to insert the new row to keep sort order:
+        # sorted by (file_name, start_time)
+        # ------------------------------------------------------------
+        insert_row = self.table.rowCount()  # default: append at the end
+
+        for r in range(self.table.rowCount()):
+            row_file_name_item = self.table.item(r, file_name_col)
+            row_start_item     = self.table.item(r, start_col)
+            if not row_file_name_item or not row_start_item:
+                continue
+
+            row_file_name = row_file_name_item.text()
+            try:
+                row_start = float(row_start_item.text())
+            except (TypeError, ValueError):
+                continue  # skip weird rows
+
+            # If the existing row should come AFTER the new one, we insert before it
+            if (row_file_name > new_file_name) or (
+                row_file_name == new_file_name and row_start > start_time
+            ):
+                insert_row = r
+                break
+
+
+        # ------------------------------------------------------------
+        # Insert the row into the table, but don't fire itemChanged
+        # for every cell we fill.
+        # ------------------------------------------------------------
+        self.table.blockSignals(True)
+
+        self.table.insertRow(insert_row)
+
+        for col in range(self.table.columnCount()):
+            header = self.table.horizontalHeaderItem(col).text()
+
+            if header == "ID":
+                # Leave blank; save_review/_assign_missing_ids will fill this.
+                text = ""
+            elif header == "file_path":
+                text = new_file_path
+            elif header == "file_name":
+                text = new_file_name
+            elif header == "start_time":
+                text = f"{start_time:.3f}"
+            elif header == "end_time":
+                text = f"{end_time:.3f}"
+            elif header in ("erase", "user_comment", "review_datetime"):
+                text = ""
+            else:
+                text = ""
+
+            item = QTableWidgetItem(text)
+            self.table.setItem(insert_row, col, item)
+
+        # Mark new row as "not reviewed yet"
+        for col in range(self.table.columnCount()):
+            cell = self.table.item(insert_row, col)
+            if cell:
+                cell.setBackground(QColor("white"))
+
+        self.table.blockSignals(False)
+
+        # ------------------------------------------------------------
+        # Sync self.csv_data from the table and persist to disk.
+        # This will:
+        #   - rebuild the DataFrame from the table
+        #   - assign IDs for blank "ID" cells
+        #   - write CSV + export (because persist=True)
+        # ------------------------------------------------------------
+        self.current_index = insert_row
+        self.save_review(persist=True)
+
+        # ---- fill in the ID cell from self.csv_data ----
+        if "ID" in self.csv_data.columns:
+            id_col = self.csv_data.columns.get_loc("ID")
+            new_id = str(self.csv_data.iloc[insert_row]["ID"])
+
+            self.table.blockSignals(True)
+            try:
+                id_item = self.table.item(insert_row, id_col)
+                if id_item is None:
+                    id_item = QTableWidgetItem(new_id)
+                    self.table.setItem(insert_row, id_col, id_item)
+                else:
+                    id_item.setText(new_id)
+            finally:
+                self.table.blockSignals(False)
+
+        # ------------------------------------------------------------
+        # Visually select the new row and refresh UI
+        # ------------------------------------------------------------
+        self.table.blockSignals(True)
+        self.table.selectRow(insert_row)
+        self.table.blockSignals(False)
+
+        # Update spinboxes & spectrogram to show the new detection
+        self.update_start_end_spinboxes(insert_row)
+        spectrogram, detection_start, detection_end, audio_duration, audio_start, audio_end, fname = self.load_audio()
+        self.display_spectrogram(spectrogram, detection_start, detection_end, audio_duration, audio_start, audio_end, fname)
+        self.highlight_all_rows()
+
 
     def apply_keep(self):
         self.apply_label_to_current_detection(erase_flag=0)

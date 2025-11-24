@@ -3,9 +3,10 @@ import os
 import json
 import time
 import logging
+import shutil
 import pandas as pd
 import numpy as np
-import librosa 
+import librosa
 import soundfile as sf
 from datetime import datetime
 
@@ -328,8 +329,9 @@ class VoiceDetectorScreen(QMainWindow):
             QMessageBox.information(self, "Complete", "All files processed successfully.")
 
 class AppScreen(QMainWindow):
-    def __init__(self, project_manager):
+    def __init__(self, project_manager, home_screen=None):
         self.project_manager = project_manager
+        self.home_screen = home_screen
         super().__init__()
         self.init_ui()
 
@@ -383,17 +385,19 @@ class AppScreen(QMainWindow):
         self.step_labels[1].setText(status_text_2)
         self.step_labels[1].setStyleSheet(color_style_2)
 
-        # 3) Silence Voices step – if you have a real file for this step, check it here.
-        #    Otherwise, we'll just put "Not Started" for now:
-        silence_path = getattr(self.project_manager.current_project, 'silence_file', None)
+        # 3) Silence Voices step – check for the status file that marks completion
+        silence_path = self.project_manager.current_project.get('silence_status_file')
         if not silence_path:
-            # If your project data doesn't have a field, we’ll just say "Not Started"
-            self.step_labels[2].setText("Not Started")
-            self.step_labels[2].setStyleSheet("color: red;")
-        else:
+            silence_path = None
+
+        if silence_path:
             status_text_3, color_style_3 = self.compute_step_status(silence_path)
             self.step_labels[2].setText(status_text_3)
             self.step_labels[2].setStyleSheet(color_style_3)
+        else:
+            # If your project data doesn't have a field, we’ll just say "Not Started"
+            self.step_labels[2].setText("Not Started")
+            self.step_labels[2].setStyleSheet("color: red;")
 
     def refresh_file_list(self):
         """
@@ -498,6 +502,19 @@ class AppScreen(QMainWindow):
         self.silence_voices_screen.show()
 
     def init_ui(self):
+        menu_bar = self.menuBar()
+        file_menu = menu_bar.addMenu("File")
+
+        close_project_action = QAction("Close Project", self)
+        close_project_action.setShortcut("Ctrl+W")
+        close_project_action.triggered.connect(self.close_project)
+        file_menu.addAction(close_project_action)
+
+        close_app_action = QAction("Close App", self)
+        close_app_action.setShortcut("Ctrl+Q")
+        close_app_action.triggered.connect(QApplication.instance().quit)
+        file_menu.addAction(close_app_action)
+
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
 
@@ -563,13 +580,21 @@ class AppScreen(QMainWindow):
 
         central_widget.setLayout(main_layout)
 
+    def close_project(self):
+        self.project_manager.current_project = None
+        self.hide()
+
+        if self.home_screen:
+            self.home_screen.show()
+
 # tracks the audio files that are added to the project 
 class ProjectManager:
     def __init__(self):
         # Define the path to the 'projects' folder and the 'projects.json' file
         self.projects_folder = settings.project_dir
+        self.softspoken_outputs_folder = os.path.join(self.projects_folder, 'Softspoken Outputs')
         self.projects_file = os.path.join(self.projects_folder, 'projects.json')
-        
+
         # all projects saved by the user
         self.projects_data = []
         
@@ -579,13 +604,65 @@ class ProjectManager:
         # Check if the 'projects' folder exists, and create it if it doesn't
         if not os.path.exists(self.projects_folder):
             os.mkdir(self.projects_folder)
-        
+
+        os.makedirs(self.softspoken_outputs_folder, exist_ok=True)
+
         # Check if the 'projects.json' file exists, and load it if it does
         if os.path.exists(self.projects_file):
             with open(self.projects_file, 'r') as f:
                 self.projects_data = json.load(f)
+            self._migrate_project_paths()
         else:
             # If the file doesn't exist, create it with an empty JSON object
+            self.write_projects_file()
+
+    def get_softspoken_output_dir(self, project_name):
+        return os.path.join(self.softspoken_outputs_folder, project_name)
+
+    def _move_if_exists(self, old_path, new_path):
+        if not old_path or old_path == new_path:
+            return
+
+        os.makedirs(os.path.dirname(new_path), exist_ok=True)
+
+        if os.path.exists(old_path) and not os.path.exists(new_path):
+            shutil.move(old_path, new_path)
+
+    def _migrate_project_paths(self):
+        updated = False
+
+        for project in self.projects_data:
+            project_name = project.get('name')
+            if not project_name:
+                continue
+
+            project_output_dir = self.get_softspoken_output_dir(project_name)
+            os.makedirs(project_output_dir, exist_ok=True)
+
+            expected_detections = os.path.join(project_output_dir, f"{project_name}_detections.csv")
+            expected_review = os.path.join(project_output_dir, f"{project_name}_review.csv")
+            expected_file_list = os.path.join(project_output_dir, f"{project_name}_files.txt")
+
+            current_detections = project.get('detections_file')
+            current_review = project.get('review_file')
+            current_file_list = project.get('file_list_file')
+
+            if current_detections != expected_detections:
+                self._move_if_exists(current_detections, expected_detections)
+                project['detections_file'] = expected_detections
+                updated = True
+
+            if current_review != expected_review:
+                self._move_if_exists(current_review, expected_review)
+                project['review_file'] = expected_review
+                updated = True
+
+            if current_file_list != expected_file_list:
+                self._move_if_exists(current_file_list, expected_file_list)
+                project['file_list_file'] = expected_file_list
+                updated = True
+
+        if updated:
             self.write_projects_file()
 
     def get_unprocessed_list(self):
@@ -640,7 +717,8 @@ class ProjectManager:
             'name': '', # unique name of the project
             'file_list_file': '_files.txt',  # list of the individual files
             'detections_file': '_detections.csv',  # thresholded detections
-            'review_file': '_review.csv', 
+            'review_file': '_review.csv',
+            'silence_status_file': '',
             'last_accessed': ''
         }
     
@@ -653,11 +731,13 @@ class ProjectManager:
     def add_project(self, name):
         project_settings = self.get_new_project_settings()
         project_settings['name'] = name
-        project_settings['file_list_file'] = os.path.join(self.projects_folder, name + project_settings['file_list_file'])
-        project_settings['detections_file'] = os.path.join(self.projects_folder, name + project_settings['detections_file'])
-        project_settings['review_file'] = os.path.join(self.projects_folder, name + project_settings['review_file'])
+        output_dir = self.get_softspoken_output_dir(name)
+        os.makedirs(output_dir, exist_ok=True)
+        project_settings['file_list_file'] = os.path.join(output_dir, f"{name}_files.txt")
+        project_settings['detections_file'] = os.path.join(output_dir, f"{name}_detections.csv")
+        project_settings['review_file'] = os.path.join(output_dir, f"{name}_review.csv")
         project_settings['last_accessed'] = self.get_current_datetime_str()
-        
+
         self.projects_data.append(project_settings)
         self.write_projects_file()
         
@@ -669,7 +749,20 @@ class ProjectManager:
     def set_active_project(self, project_name):
         # Use a generator expression to find the project with the given name, otherwise return None
         project = next((p for p in self.projects_data if p['name'] == project_name), None)
+        if project is not None:
+            project.setdefault('silence_status_file', '')
+
         self.current_project = project
+
+    def save_current_project(self):
+        if not self.current_project:
+            return
+
+        for idx, project in enumerate(self.projects_data):
+            if project['name'] == self.current_project['name']:
+                self.projects_data[idx] = self.current_project
+                self.write_projects_file()
+                break
 
     def activate_latest(self):
         if len(self.projects_data) == 0:
@@ -682,8 +775,9 @@ class ProjectManager:
 class DetectionProject:
     def __init__(self, project_settings):
         self.settings = project_settings
-        
+
         column_types = {
+            'ID': 'int64',
             'file_path': str,
             'file_name': str,
             'start_time': str,
@@ -695,9 +789,27 @@ class DetectionProject:
         
         # use these to setup a new detections df
         self.columns = column_types.keys()
-        
-        if os.path.exists(self.settings.current_project['detections_file']):
-            self.df = pd.read_csv(self.settings.current_project['detections_file']).astype(column_types)
+
+        detections_path = self.settings.current_project['detections_file']
+        if os.path.exists(detections_path):
+            self.df = pd.read_csv(detections_path)
+
+            if 'ID' not in self.df.columns:
+                self.df.insert(0, 'ID', range(1, len(self.df) + 1))
+            else:
+                self.df['ID'] = pd.to_numeric(self.df['ID'], errors='coerce')
+                missing_ids = self.df['ID'].isna()
+                if missing_ids.any():
+                    current_max = self.df['ID'].dropna().max()
+                    start_id = int(current_max) if not np.isnan(current_max) else 0
+                    for offset, idx in enumerate(self.df.index[missing_ids], start=start_id + 1):
+                        self.df.at[idx, 'ID'] = offset
+                self.df['ID'] = self.df['ID'].astype('int64')
+
+            if 'review_datetime' in self.df.columns:
+                self.df['review_datetime'] = pd.to_datetime(self.df['review_datetime'], errors='coerce')
+
+            self.df = self.df.reindex(columns=self.columns).astype(column_types)
         else:
             self.df = pd.DataFrame(columns = self.columns).astype(column_types)
     
@@ -1009,8 +1121,10 @@ class SilenceVoicesScreen(QMainWindow):
             QMessageBox.information(self, "No Data", "No data in the review CSV or not loaded.")
             return
 
+        self.output_dir = self.output_dir_edit.text().strip()
+
         # Create the worker
-        self.worker = SilenceWorker(self.review_df, self.output_dir_edit.text().strip())
+        self.worker = SilenceWorker(self.review_df, self.output_dir)
         # Connect signals
         self.worker.signals.fileStarted.connect(self.on_file_started)
         self.worker.signals.fileComplete.connect(self.on_file_complete)
@@ -1055,6 +1169,21 @@ class SilenceVoicesScreen(QMainWindow):
         self.progress_bar.setValue(100)
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
+
+        # mark completion for project status tracking
+        if self.output_dir:
+            status_file = os.path.join(self.output_dir, 'silence_complete.txt')
+            try:
+                with open(status_file, 'w') as f:
+                    f.write(f"Silencing completed at {datetime.now().isoformat()}")
+
+                self.project_manager.current_project['silence_status_file'] = status_file
+                self.project_manager.save_current_project()
+            except Exception as e:
+                logging.error(f"Unable to record silence completion: {e}")
+
+        if self.parent_app_screen:
+            self.parent_app_screen.refresh_step_status()
 
 def add_common_menus(main_window):
     """
@@ -1120,11 +1249,11 @@ def main():
     new_project_dialog = NewProjectDialog()
     
     # app screen contains workflow for the detections
-    app_screen = AppScreen(project_manager)
+    app_screen = AppScreen(project_manager, home_screen=home_screen)
     add_common_menus(app_screen)
-    
+
     def open_app_screen():
-        home_screen.close()
+        home_screen.hide()
 
         # pick the last accessed project
         activated = app_screen.project_manager.activate_latest()
@@ -1146,7 +1275,7 @@ def main():
             project_manager.set_active_project(project_name)
             
             # close the home screen and launch the analysis app
-            home_screen.close()
+            home_screen.hide()
             app_screen.show()
         
         else:
@@ -1168,7 +1297,7 @@ def main():
             
             # do something with the selected_item
             project_manager.set_active_project(selected_item)
-            home_screen.close()
+            home_screen.hide()
             app_screen.show()
             
     home_screen.last_project_clicked.connect(open_app_screen)
